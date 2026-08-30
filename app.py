@@ -19,6 +19,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 import gradio as gr
+import spaces
 
 try:
     from dotenv import load_dotenv
@@ -184,6 +185,7 @@ def _gallery_items(results: list[dict[str, Any]]) -> list[tuple[str, str]]:
     return gallery
 
 
+@spaces.GPU(duration=30)
 def search_demo(
     query: str,
     model: str,
