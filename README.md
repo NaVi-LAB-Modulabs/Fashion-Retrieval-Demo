@@ -1,51 +1,26 @@
 ---
-title: Fashion How Graph Search
-sdk: docker
-app_port: 7860
+title: Fashion-How Graph Search
+colorFrom: teal
+colorTo: indigo
+sdk: gradio
+app_file: app.py
+pinned: false
 ---
 
-# Fashion-How Graph Search Demo
+# Fashion-How Graph Search
 
-Fashion-How 상품을 Neo4j GraphDB와 OpenAI 기반 query parser로 검색하는 데모입니다.
+Demo for natural-language fashion retrieval over a Neo4j attribute graph. The
+system parses a user query into structured graph constraints, executes the
+generated Cypher query, and optionally reranks candidates with text and style
+signals.
 
-이 데모는 자연어 검색어를 다음 신호로 분해합니다.
-
-- Hard filters: item type, color, material, style, occasion, pattern, season, category attributes
-- Description query: hard filter로 설명되지 않은 남은 표현만 semantic vector score에 사용
-- Style axis targets: query에 드러난 축만 선택해서 item axis score와의 거리로 점수화
-
-최종 점수는 활성화된 component만 평균냅니다.
-
-```text
-final_score = average(graph_score, text_score, style_score)
-```
-
-모든 query 내용이 hard filter로 해결되면 `text_score`와 `style_score`는 계산하지 않습니다.
-
-## Demo Structure
-
-```text
-.
-├── Dockerfile
-├── README.md
-├── requirements.txt
-├── fashion-how/
-│   └── image/                  # small image sample only
-└── src/
-    └── fashion_how_graphdb/
-        ├── search_server.py     # local HTTP server
-        ├── search_viewer.html   # browser UI
-        ├── search.py            # extraction, Cypher build, reranking
-        ├── cypher.py            # Neo4j defaults/helpers
-        ├── category_taxonomy.py
-        ├── taxonomy.py
-        ├── prompts.py
-        └── vlm.py
-```
+This Space is prepared for an ECIR demo-track style walkthrough: the UI shows
+ranked fashion items, extracted filters, graph candidates, score components, and
+the final Cypher query used for retrieval.
 
 ## Required Space Secrets
 
-Set these in Hugging Face Space Settings.
+Set these in the Hugging Face Space settings:
 
 ```text
 OPENAI_API_KEY
@@ -62,11 +37,45 @@ OPENAI_MODEL
 OPENAI_EMBEDDING_MODEL
 ```
 
+## Local Run
+
+Use Windows Command Prompt:
+
+```cmd
+cd /d C:\Users\jiyoo\GithubRepo\Fashion-Retrieval-Demo
+set PYTHONPATH=src
+python app.py
+```
+
+Open:
+
+```text
+http://127.0.0.1:7860
+```
+
+## Demo Structure
+
+```text
+.
+|-- app.py                         # Gradio Space entry point
+|-- requirements.txt
+|-- fashion-how/
+|   `-- image/                     # sample image assets
+`-- src/
+    `-- fashion_how_graphdb/
+        |-- search.py              # query parsing, Cypher build, reranking
+        |-- cypher.py              # Neo4j defaults and import helpers
+        |-- taxonomy.py
+        |-- category_taxonomy.py
+        `-- vlm.py                 # OpenAI Responses API helpers
+```
+
 ## Neo4j Item Properties
 
-For image display, each `Item` should include an `image_file` property that matches a file under `fashion-how/image`.
+For image display, each `Item` should include an `image_file` property that
+matches a file under `fashion-how/image`.
 
-For description vector reranking, each `Item` can include one of:
+For description-vector reranking, each `Item` can include one of:
 
 ```text
 description_embedding
@@ -76,7 +85,7 @@ text_embedding
 embedding
 ```
 
-For style axis reranking, each `Item` can include:
+For style-axis reranking, each `Item` can include:
 
 ```text
 trendy_classic
@@ -88,30 +97,5 @@ soft_sharp
 young_mature
 ```
 
-Each axis value is a float from `0.0` to `1.0`, where `0.0` is the left pole and `1.0` is the right pole.
-
-## Local Run
-
-Use Windows Command Prompt:
-
-```cmd
-cd /d C:\Users\jiyoo\GithubRepo\Fashion-Retrieval-Demo
-set PYTHONPATH=src
-python -m fashion_how_graphdb.search_server --host 127.0.0.1 --port 7860
-```
-
-Open:
-
-```text
-http://127.0.0.1:7860
-```
-
-## Hugging Face Spaces
-
-Create a new Space with Docker SDK, then push this folder.
-
-The container starts with:
-
-```cmd
-python -m fashion_how_graphdb.search_server --host 0.0.0.0 --port 7860
-```
+Each axis value is a float from `0.0` to `1.0`, where `0.0` is the left pole and
+`1.0` is the right pole.
