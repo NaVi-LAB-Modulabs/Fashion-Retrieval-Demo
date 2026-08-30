@@ -273,8 +273,6 @@ button.primary {
 
 with gr.Blocks(
     title=APP_TITLE,
-    css=CSS,
-    theme=gr.themes.Soft(primary_hue="teal", neutral_hue="slate"),
 ) as demo:
     gr.Markdown(
         """
@@ -406,4 +404,8 @@ demo.queue()
 
 
 if __name__ == "__main__":
-    demo.launch(show_error=True)
+    demo.launch(
+        show_error=True,
+        css=CSS,
+        theme=gr.themes.Soft(primary_hue="teal", neutral_hue="slate"),
+    )
