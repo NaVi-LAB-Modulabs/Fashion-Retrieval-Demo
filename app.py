@@ -9,6 +9,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+# Hugging Face Spaces enables Gradio SSR by default. This demo uses standard
+# client-side rendering to avoid the Node SSR proxy shutting down the app.
+os.environ["GRADIO_SSR_MODE"] = "False"
+
 ROOT = Path(__file__).resolve().parent
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
@@ -406,6 +410,8 @@ demo.queue()
 if __name__ == "__main__":
     demo.launch(
         show_error=True,
+        debug=True,
+        ssr_mode=False,
         css=CSS,
         theme=gr.themes.Soft(primary_hue="teal", neutral_hue="slate"),
     )
