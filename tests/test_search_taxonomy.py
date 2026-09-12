@@ -46,6 +46,8 @@ class Fashion200KSearchTests(unittest.TestCase):
                 self.assertNotIn("IS_TYPE", cypher)
                 self.assertNotIn("HAS_STYLE", cypher)
                 self.assertNotIn("HAS_OCCASION", cypher)
+                self.assertIn("CALL (item) {", cypher)
+                self.assertNotIn("CALL {\n  WITH item", cypher)
                 self.assertEqual(params["item_type_codes"], ["pants"])
                 self.assertEqual(params["value_0"], "navy")
                 self.assertEqual(params["value_1"], "pants_fit:wide_leg")

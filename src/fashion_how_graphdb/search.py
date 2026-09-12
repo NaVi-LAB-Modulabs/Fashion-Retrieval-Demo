@@ -736,8 +736,7 @@ def build_search_cypher(
 
     lines.extend(
         [
-            "CALL {",
-            "  WITH item",
+            "CALL (item) {",
             "  OPTIONAL MATCH (item)-[mapped_rel]->(mapped_node)",
             "  WHERE type(mapped_rel) IN [",
             "    'HAS_COLOR', 'HAS_MATERIAL',",
