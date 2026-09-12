@@ -13,12 +13,12 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fashion_how_graphdb.web_service import (
     catalog_preview, configuration, image_index, retrieve, validate_request,
 )
-from fashion_how_graphdb.hf_images import resolve_images
+from fashion_how_graphdb.hf_images import fetch_image, resolve_images
 from fashion_how_graphdb.diagnostics import failure_details
 
 app = FastAPI(title="Fashion Search API", version="1.0.0")
@@ -29,7 +29,7 @@ async def response_headers(request: Request, call_next: Any) -> Any:
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "same-origin"
-    if request.url.path.startswith("/api/"):
+    if request.url.path.startswith("/api/") and not request.url.path.startswith("/api/image/"):
         response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -85,6 +85,26 @@ def images(payload: dict[str, Any]) -> dict[str, Any]:
         return resolve_images(payload)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+
+
+@app.get("/api/image/{item_id}.jpg", include_in_schema=False)
+def hf_image(item_id: str, refresh: bool = False) -> Response:
+    try:
+        payload, content_type = fetch_image(item_id, refresh=refresh)
+    except KeyError as exc:
+        raise HTTPException(404, "Image not found") from exc
+    except TimeoutError as exc:
+        logging.getLogger(__name__).warning("HF image proxy timed out item_id=%s", item_id)
+        raise HTTPException(504, "Image provider timed out") from exc
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except Exception as exc:
+        logging.getLogger(__name__).warning(
+            "HF image proxy unavailable item_id=%s type=%s", item_id, type(exc).__name__
+        )
+        raise HTTPException(502, "Image provider unavailable") from exc
+    return Response(payload, media_type=content_type,
+                    headers={"Cache-Control": "public, max-age=3600"})
 
 
 app.mount("/assets", StaticFiles(directory=ROOT / "web"), name="assets")

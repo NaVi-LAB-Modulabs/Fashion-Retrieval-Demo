@@ -10,7 +10,7 @@ from urllib.parse import unquote, urlsplit
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "src"))
 from fashion_how_graphdb.web_service import catalog_preview, configuration, image_index
-from fashion_how_graphdb.hf_images import resolve_images
+from fashion_how_graphdb.hf_images import fetch_image, resolve_images
 
 
 class PreviewHandler(BaseHTTPRequestHandler):
@@ -19,6 +19,15 @@ class PreviewHandler(BaseHTTPRequestHandler):
         if path in ("/api/config", "/api/preview"):
             data = configuration(preview=True) if path.endswith("config") else catalog_preview()
             self.send_data(json.dumps(data, ensure_ascii=False).encode(), "application/json")
+            return
+        if path.startswith("/api/image/") and path.endswith(".jpg"):
+            item_id = path.removeprefix("/api/image/")[:-4]
+            try:
+                payload, content_type = fetch_image(item_id)
+            except Exception:
+                self.send_error(404)
+                return
+            self.send_data(payload, content_type, cache_control="public, max-age=3600")
             return
         if path == "/":
             file = ROOT / "web" / "index.html"
@@ -54,12 +63,12 @@ class PreviewHandler(BaseHTTPRequestHandler):
             return
         self.send_data(json.dumps({"detail": "This is a catalog preview. Run python web_app.py with the server dependencies and credentials to enable live search."}).encode(), "application/json", 503)
 
-    def send_data(self, data, content_type, status=200):
+    def send_data(self, data, content_type, status=200, cache_control="no-store"):
         self.send_response(status)
         self.send_header("Content-Type", content_type + ("; charset=utf-8" if content_type.startswith("text/") or content_type == "application/json" else ""))
         self.send_header("Content-Length", str(len(data)))
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", cache_control)
         self.end_headers()
         self.wfile.write(data)
 

@@ -108,12 +108,13 @@ The live web app does not need a local copy of Fashion200K images. It returns
 property if present, otherwise `id`. Preserve the original ID, including its
 image suffix (for example, `51727804_0`).
 
-After rendering the search evidence, the browser sends up to 50 IDs per request
-to `POST /api/images`. The server uses the Dataset Viewer `/filter` endpoint with
-OR predicates and maps returned rows by ID, independently of their order. Images
-are loaded directly from Hugging Face; no image files or image bytes are stored
-in the repository, database or Vercel function. Requests for image metadata do not
-change the retrieval ranking or its measured stage timings.
+After rendering the search evidence, the browser sends IDs to `POST /api/images`
+and receives same-origin `/api/image/<item_ID>.jpg` proxy URLs. Each image request
+uses one equality predicate against the Dataset Viewer `/filter` endpoint, then
+the server returns the image bytes. At most four upstream requests run concurrently
+per server process, and successful bytes are cached in memory. No image files are
+stored in the repository or database. Image requests do not change retrieval
+ranking or its measured stage timings.
 
 Defaults (no extra Vercel configuration is required for this public dataset):
 
@@ -125,14 +126,11 @@ Defaults (no extra Vercel configuration is required for this public dataset):
 | `HF_IMAGE_ID_COLUMN` | `item_ID` |
 | `HF_TOKEN` | Unset; optional server-side read token |
 
-Signed image URLs are cached in memory for at most 60 seconds (shorter when a
-known expiry approaches). Missing IDs are cached for 30 seconds. If an image
-fails to load, the browser requests a fresh URL once. Provider errors, missing
-IDs and failed images produce an image-unavailable placeholder while retaining
-all search results and evidence. Exported runs retain image IDs, not the fetched
-temporary URLs. Lookup speed and availability depend on the external service.
-Image metadata requests allow up to 20 seconds because a cold Dataset Viewer
-filter over Fashion200K can take longer than a typical API request.
+If an image fails to load, the browser retries the proxy once. Provider errors,
+missing IDs and failed images produce an image-unavailable placeholder while
+retaining all search results and evidence. Exported runs retain image IDs. Each
+upstream metadata or image request allows up to 30 seconds, matching the working
+Fashion200K metadata viewer behavior.
 `preview.py` also loads the Hugging Face samples and supports image URL refresh. It needs internet access for images, but does not call OpenAI or Neo4j. Preview metadata is cached for at most 60 seconds; failures show an empty preview instead of switching to local samples.
 
 API reference: [filter predicates](https://huggingface.co/docs/dataset-viewer/filter)

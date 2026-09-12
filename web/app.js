@@ -29,6 +29,7 @@ let refreshTimer;
 function safeImageSource(value) {
   if (typeof value !== "string") return null;
   if (value.startsWith("/images/")) return value;
+  if (value.startsWith("/api/image/")) return value;
   try {
     const url = new URL(value);
     const allowed = ["huggingface.co", "hf.co"].some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`));

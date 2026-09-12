@@ -163,6 +163,14 @@ class PreviewHTTPTests(unittest.TestCase):
         with urlopen(self.base + "/api/config") as response:
             self.assertFalse(json.load(response)["ready"])
 
+    def test_preview_proxies_one_image_by_item_id(self):
+        jpeg = b"\xff\xd8\xffpayload"
+        with patch("preview.fetch_image", return_value=(jpeg, "image/jpeg")) as fetch:
+            with urlopen(self.base + "/api/image/90793401_0.jpg") as response:
+                self.assertEqual(response.read(), jpeg)
+                self.assertEqual(response.headers["Cache-Control"], "public, max-age=3600")
+        fetch.assert_called_once_with("90793401_0")
+
     def test_no_file_traversal_or_secret_exposure(self):
         for route in ["/.env", "/assets/../.env", "/assets/%2e%2e/.env", "/images/../.env", "/images/not-found.jpg"]:
             with self.subTest(route=route), self.assertRaises(HTTPError) as exc:

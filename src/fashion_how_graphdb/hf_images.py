@@ -8,19 +8,21 @@ import logging
 import math
 import os
 import re
-from threading import Lock
+from threading import BoundedSemaphore, Lock
 from time import time
 from typing import Any
-from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.parse import parse_qs, quote, urlencode, urlsplit
 from urllib.request import Request, urlopen
 
 API_URL = "https://datasets-server.huggingface.co/filter"
 MAX_IDS = 50
 MAX_RESPONSE_BYTES = 2_000_000
-IMAGE_METADATA_TIMEOUT_SECONDS = 20
-CACHE_SIZE = 2048
-_cache: OrderedDict[tuple[str, ...], tuple[float, str | None]] = OrderedDict()
+MAX_IMAGE_BYTES = 12_000_000
+IMAGE_REQUEST_TIMEOUT_SECONDS = 30
+IMAGE_CACHE_SIZE = 256
+_cache: OrderedDict[tuple[str, ...], tuple[bytes, str]] = OrderedDict()
 _cache_lock = Lock()
+_image_requests = BoundedSemaphore(4)
 _preview_cache: dict[tuple[str, ...], tuple[float, list[dict[str, Any]]]] = {}
 
 
@@ -59,7 +61,7 @@ def is_image_url(value: Any) -> bool:
 
 
 def _expires_at(url: str, now: float) -> float:
-    # Viewer URLs are signed, temporary URLs. Never persist them in the graph.
+    """Keep Dataset Viewer URLs only while their signature remains usable."""
     expiry = now + 60
     raw_expiry = parse_qs(urlsplit(url).query).get("Expires", [None])[0]
     if raw_expiry is not None:
@@ -89,9 +91,7 @@ def _fetch_rows(endpoint: str, params: dict[str, Any]) -> list[Any]:
     if token:
         headers["Authorization"] = f"Bearer {token}"
     request = Request(endpoint + "?" + urlencode(params), headers=headers)
-    # The viewer may need to scan a cold Fashion200K parquet shard before it can
-    # evaluate the filter. Eight seconds was too short in production on Vercel.
-    with urlopen(request, timeout=IMAGE_METADATA_TIMEOUT_SECONDS) as response:
+    with urlopen(request, timeout=IMAGE_REQUEST_TIMEOUT_SECONDS) as response:
         raw = response.read(MAX_RESPONSE_BYTES + 1)
     if len(raw) > MAX_RESPONSE_BYTES:
         raise ValueError("Image metadata response is too large.")
@@ -102,59 +102,79 @@ def _fetch_rows(endpoint: str, params: dict[str, Any]) -> list[Any]:
 
 
 def resolve_images(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return stable same-origin proxy URLs without running a batch HF filter."""
     item_ids, refresh = validate_image_request(payload)
+    suffix = "?refresh=true" if refresh else ""
+    expires_at = time() + 3600
+    return {
+        "images": {
+            item_id: {
+                "url": f"/api/image/{quote(item_id, safe='')}.jpg{suffix}",
+                "expires_at": expires_at,
+            }
+            for item_id in item_ids
+        },
+        "missing_ids": [],
+        "status": "ok",
+    }
+
+
+def _image_content_type(payload: bytes) -> str:
+    if payload.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if payload.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if payload.startswith(b"RIFF") and payload[8:12] == b"WEBP":
+        return "image/webp"
+    raise ValueError("Unsupported image response.")
+
+
+def fetch_image(item_id: str, *, refresh: bool = False) -> tuple[bytes, str]:
+    """Fetch one Fashion200K image through a simple equality filter and cache bytes."""
+    validated, _ = validate_image_request({"item_ids": [item_id], "refresh": refresh})
+    item_id = validated[0]
     source = image_source()
-    now = time()
-    images: dict[str, dict[str, Any]] = {}
-    missing: list[str] = []
-    pending: list[str] = []
+    key = (*source, item_id)
     with _cache_lock:
-        for item_id in item_ids:
-            key = (*source, item_id)
-            entry = _cache.get(key)
-            if entry and not refresh and entry[0] > now:
-                _cache.move_to_end(key)
-                if entry[1]:
-                    images[item_id] = {"url": entry[1], "expires_at": entry[0]}
-                else:
-                    missing.append(item_id)
-            else:
-                _cache.pop(key, None)
-                pending.append(item_id)
-    if not pending:
-        return {"images": images, "missing_ids": missing, "status": "ok"}
-    try:
-        rows = _request_rows(pending, source)
-        found: dict[str, str] = {}
-        for entry in rows:
-            row = entry.get("row") if isinstance(entry, dict) else None
-            if not isinstance(row, dict):
-                continue
-            item_id = row.get(source[3])
-            image = row.get("image")
-            url = image.get("src") if isinstance(image, dict) else None
-            if isinstance(item_id, str) and item_id in pending and is_image_url(url):
-                found.setdefault(item_id, url)
-        now = time()
-        with _cache_lock:
-            for item_id in pending:
-                url = found.get(item_id)
-                expiry = _expires_at(url, now) if url else now + 30
-                if expiry <= now:
-                    url, expiry = None, now  # Do not reuse an already expired viewer response.
-                _cache[(*source, item_id)] = (expiry, url)
-                if url:
-                    images[item_id] = {"url": url, "expires_at": expiry}
-                else:
-                    missing.append(item_id)
-            while len(_cache) > CACHE_SIZE:
-                _cache.popitem(last=False)
-        return {"images": images, "missing_ids": missing, "status": "ok"}
-    except Exception as exc:
-        # Image failure must not discard the search results. Do not log URLs or tokens.
-        logging.getLogger(__name__).warning("Image lookup unavailable (%s)", type(exc).__name__)
-        return {"images": images, "missing_ids": missing, "unavailable_ids": pending,
-                "status": "unavailable"}
+        cached = _cache.get(key)
+        if cached is not None and not refresh:
+            _cache.move_to_end(key)
+            return cached
+
+    with _image_requests:
+        rows = _request_rows([item_id], source)
+        row = next(
+            (
+                entry["row"]
+                for entry in rows
+                if isinstance(entry, dict)
+                and isinstance(entry.get("row"), dict)
+                and str(entry["row"].get(source[3])) == item_id
+            ),
+            None,
+        )
+        if row is None:
+            raise KeyError(item_id)
+        image = row.get("image")
+        image_url = image.get("src") if isinstance(image, dict) else None
+        if not is_image_url(image_url):
+            raise ValueError("Invalid image URL from Hugging Face.")
+        request = Request(
+            image_url,
+            headers={"Accept": "image/*", "User-Agent": "FashionSearch/1.0"},
+        )
+        with urlopen(request, timeout=IMAGE_REQUEST_TIMEOUT_SECONDS) as response:
+            payload = response.read(MAX_IMAGE_BYTES + 1)
+        if len(payload) > MAX_IMAGE_BYTES:
+            raise ValueError("Image response is too large.")
+        result = (payload, _image_content_type(payload))
+
+    with _cache_lock:
+        _cache[key] = result
+        _cache.move_to_end(key)
+        while len(_cache) > IMAGE_CACHE_SIZE:
+            _cache.popitem(last=False)
+    return result
 
 
 def sample_catalog() -> dict[str, Any]:
