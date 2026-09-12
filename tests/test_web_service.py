@@ -116,8 +116,14 @@ class RetrievalTests(unittest.TestCase):
             client.assert_not_called()
 
     def test_preview_never_claims_search_scores_or_connectivity(self):
-        data = service.catalog_preview()
+        from fashion_how_graphdb import hf_images
+        hf_images._preview_cache.clear()
+        with patch.object(hf_images, "_fetch_rows", return_value=[{"row": {
+            "item_ID": "sample-id", "image": {"src": "https://hf.co/sample.jpg"},
+        }}]):
+            data = service.catalog_preview()
         self.assertFalse(data["ranked"])
+        self.assertEqual(data["source"], "huggingface")
         self.assertGreater(len(data["items"]), 0)
         self.assertNotIn("score", data["items"][0])
         self.assertFalse(service.configuration(preview=True)["ready"])

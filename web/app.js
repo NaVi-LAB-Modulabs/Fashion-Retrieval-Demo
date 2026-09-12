@@ -135,7 +135,7 @@ function renderItems() {
     </button>`;
   }).join("");
   handleImageErrors($("results-grid"));
-  $("ranking-table").innerHTML = `<table><caption class="sr-only">${ranked ? "Retrieval scores; N/A means unavailable or inactive" : "Unranked local catalog preview"}</caption><thead><tr>${ranked ? '<th scope="col">Rank</th>' : ""}<th scope="col">Item</th><th scope="col">Type</th>${ranked ? '<th scope="col">Final</th><th scope="col">Graph</th><th scope="col">Semantic</th><th scope="col">Style</th>' : ""}</tr></thead><tbody>${items.map((item, index) => `<tr>${ranked ? `<td>${index + 1}</td>` : ""}<td><button type="button" data-item="${index}" aria-label="Inspect ${escapeHTML(item.id)}">${escapeHTML(item.id)}</button></td><td>${escapeHTML(item.type_name || item.type_code || "Garment")}</td>${ranked ? `<td><strong>${score(item.score)}</strong></td><td>${item.score_components?.includes("graph") ? score(item.graph_score) : "N/A"}</td><td>${score(item.text_score)}</td><td>${score(item.style_score)}</td>` : ""}</tr>`).join("")}</tbody></table>`;
+  $("ranking-table").innerHTML = `<table><caption class="sr-only">${ranked ? "Retrieval scores; N/A means unavailable or inactive" : "Unranked catalog preview"}</caption><thead><tr>${ranked ? '<th scope="col">Rank</th>' : ""}<th scope="col">Item</th><th scope="col">Type</th>${ranked ? '<th scope="col">Final</th><th scope="col">Graph</th><th scope="col">Semantic</th><th scope="col">Style</th>' : ""}</tr></thead><tbody>${items.map((item, index) => `<tr>${ranked ? `<td>${index + 1}</td>` : ""}<td><button type="button" data-item="${index}" aria-label="Inspect ${escapeHTML(item.id)}">${escapeHTML(item.id)}</button></td><td>${escapeHTML(item.type_name || item.type_code || "Garment")}</td>${ranked ? `<td><strong>${score(item.score)}</strong></td><td>${item.score_components?.includes("graph") ? score(item.graph_score) : "N/A"}</td><td>${score(item.text_score)}</td><td>${score(item.style_score)}</td>` : ""}</tr>`).join("")}</tbody></table>`;
   $("empty-state").hidden = items.length > 0;
   $("empty-state").querySelector("h3").textContent = !ranked && !items.length ? "No preview images" : "No matching items";
   $("empty-state").querySelector("p").textContent = !ranked && !items.length
@@ -283,7 +283,7 @@ $("search-form").addEventListener("submit", async (event) => {
   if (!query) { notice("Describe the fashion items you are looking for.", "error"); $("query").focus(); return; }
   if (!state.config?.ready) {
     notice(state.config?.preview
-      ? "You’re viewing the local catalog preview. Start the live web server with configured OpenAI and Neo4j credentials to run a search."
+      ? "You’re viewing the catalog preview. Start the live web server with configured OpenAI and Neo4j credentials to run a search."
       : "Live search is not ready. Check the server’s OpenAI and Neo4j configuration, then reload the page.", "error");
     return;
   }
@@ -386,7 +386,16 @@ async function init() {
     $("runtime-label").textContent = "Server unavailable";
     notice("Could not connect to the server. Reload the page after checking the server is running.", "error");
   }
-  if (results[1].status === "fulfilled") state.preview = results[1].value.items;
+  if (results[1].status === "fulfilled") {
+    state.preview = results[1].value.items;
+    for (const item of state.preview) {
+      const url = safeImageSource(item.image_url);
+      if (url && item.image_expires_at * 1000 > Date.now()) {
+        imageCache.set(item.image_id, {url, expires_at: item.image_expires_at});
+      }
+    }
+    if (results[1].value.status === "unavailable") notice("Preview images could not be loaded. You can still run a search, or reload to retry the preview.", "error");
+  }
   else notice("The collection could not be loaded. Reload the page to try again.", "error");
   renderItems();
   renderInsights();

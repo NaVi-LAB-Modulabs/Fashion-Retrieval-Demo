@@ -54,12 +54,8 @@ def configuration(*, preview: bool = False) -> dict[str, Any]:
 
 
 def catalog_preview() -> dict[str, Any]:
-    return {"items": [
-        {"id": path.stem, "type_code": path.stem.split("-", 1)[0],
-         "type_name": TYPE_NAMES.get(path.stem.split("-", 1)[0], "Garment"),
-         "image_url": image_url(name)}
-        for name, path in list(image_index().items())[:12]
-    ], "source": "local_catalog", "ranked": False}
+    from .hf_images import sample_catalog
+    return sample_catalog()
 
 
 @lru_cache(maxsize=1)

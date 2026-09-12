@@ -10,6 +10,7 @@ from urllib.parse import unquote, urlsplit
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "src"))
 from fashion_how_graphdb.web_service import catalog_preview, configuration, image_index
+from fashion_how_graphdb.hf_images import resolve_images
 
 
 class PreviewHandler(BaseHTTPRequestHandler):
@@ -37,6 +38,20 @@ class PreviewHandler(BaseHTTPRequestHandler):
         self.send_data(file.read_bytes(), mimetypes.guess_type(file.name)[0] or "application/octet-stream")
 
     def do_POST(self):
+        if urlsplit(self.path).path == "/api/images":
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 < length <= 20000:
+                    raise ValueError("Invalid request size")
+                payload = json.loads(self.rfile.read(length))
+                if not isinstance(payload, dict):
+                    raise ValueError("Expected a JSON object")
+                data = resolve_images(payload)
+            except (ValueError, UnicodeError) as exc:
+                self.send_data(json.dumps({"detail": str(exc)}).encode(), "application/json", 422)
+                return
+            self.send_data(json.dumps(data).encode(), "application/json")
+            return
         self.send_data(json.dumps({"detail": "This is a catalog preview. Run python web_app.py with the server dependencies and credentials to enable live search."}).encode(), "application/json", 503)
 
     def send_data(self, data, content_type, status=200):

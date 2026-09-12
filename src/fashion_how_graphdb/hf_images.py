@@ -20,6 +20,14 @@ MAX_RESPONSE_BYTES = 2_000_000
 CACHE_SIZE = 2048
 _cache: OrderedDict[tuple[str, ...], tuple[float, str | None]] = OrderedDict()
 _cache_lock = Lock()
+_preview_cache: dict[tuple[str, ...], tuple[float, list[dict[str, Any]]]] = {}
+
+
+def image_source() -> tuple[str, str, str, str]:
+    return (os.getenv("HF_IMAGE_DATASET", "Marqo/fashion200k"),
+            os.getenv("HF_IMAGE_CONFIG", "default"),
+            os.getenv("HF_IMAGE_SPLIT", "data"),
+            os.getenv("HF_IMAGE_ID_COLUMN", "item_ID"))
 
 
 def validate_image_request(payload: dict[str, Any]) -> tuple[list[str], bool]:
@@ -71,11 +79,15 @@ def _request_rows(item_ids: list[str], source: tuple[str, str, str, str]) -> lis
     predicates = [f'"{column}" = \'' + value.replace("'", "''") + "'" for value in item_ids]
     params = {"dataset": dataset, "config": config, "split": split,
               "where": " OR ".join(predicates), "offset": 0, "length": 100}
+    return _fetch_rows(API_URL, params)
+
+
+def _fetch_rows(endpoint: str, params: dict[str, Any]) -> list[Any]:
     headers = {"Accept": "application/json", "User-Agent": "FashionSearch/1.0"}
     token = os.getenv("HF_TOKEN", "").strip()
     if token:
         headers["Authorization"] = f"Bearer {token}"
-    request = Request(API_URL + "?" + urlencode(params), headers=headers)
+    request = Request(endpoint + "?" + urlencode(params), headers=headers)
     with urlopen(request, timeout=8) as response:
         raw = response.read(MAX_RESPONSE_BYTES + 1)
     if len(raw) > MAX_RESPONSE_BYTES:
@@ -88,10 +100,7 @@ def _request_rows(item_ids: list[str], source: tuple[str, str, str, str]) -> lis
 
 def resolve_images(payload: dict[str, Any]) -> dict[str, Any]:
     item_ids, refresh = validate_image_request(payload)
-    source = (os.getenv("HF_IMAGE_DATASET", "Marqo/fashion200k"),
-              os.getenv("HF_IMAGE_CONFIG", "default"),
-              os.getenv("HF_IMAGE_SPLIT", "data"),
-              os.getenv("HF_IMAGE_ID_COLUMN", "item_ID"))
+    source = image_source()
     now = time()
     images: dict[str, dict[str, Any]] = {}
     missing: list[str] = []
@@ -143,3 +152,46 @@ def resolve_images(payload: dict[str, Any]) -> dict[str, Any]:
         logging.getLogger(__name__).warning("Image lookup unavailable (%s)", type(exc).__name__)
         return {"images": images, "missing_ids": missing, "unavailable_ids": pending,
                 "status": "unavailable"}
+
+
+def sample_catalog() -> dict[str, Any]:
+    """Read a small unranked slice directly from HF, without graph or LLM calls."""
+    source = image_source()
+    now = time()
+    with _cache_lock:
+        cached = _preview_cache.get(source)
+        if cached and cached[0] > now:
+            return {"items": cached[1], "source": "huggingface", "ranked": False, "status": "ok"}
+    try:
+        rows = _fetch_rows("https://datasets-server.huggingface.co/rows", {
+            "dataset": source[0], "config": source[1], "split": source[2],
+            "offset": 0, "length": 12,
+        })
+        now = time()
+        items = []
+        seen = set()
+        for entry in rows:
+            row = entry.get("row") if isinstance(entry, dict) else None
+            if not isinstance(row, dict):
+                continue
+            item_id = row.get(source[3])
+            image = row.get("image")
+            url = image.get("src") if isinstance(image, dict) else None
+            if not isinstance(item_id, str) or not item_id.strip() or len(item_id) > 128 or item_id in seen or not is_image_url(url):
+                continue
+            expiry = _expires_at(url, now)
+            if expiry <= now:
+                continue
+            seen.add(item_id)
+            category = next((row[key] for key in ("category3", "category2", "category1")
+                             if isinstance(row.get(key), str) and row[key].strip()), "Garment")
+            items.append({"id": item_id, "image_id": item_id, "image_url": url,
+                          "image_expires_at": expiry, "type_name": category})
+        with _cache_lock:
+            if len(_preview_cache) >= 8:
+                _preview_cache.clear()
+            _preview_cache[source] = (min((item["image_expires_at"] for item in items), default=now + 15), items)
+        return {"items": items, "source": "huggingface", "ranked": False, "status": "ok"}
+    except Exception as exc:
+        logging.getLogger(__name__).warning("Catalog preview unavailable (%s)", type(exc).__name__)
+        return {"items": [], "source": "huggingface", "ranked": False, "status": "unavailable"}

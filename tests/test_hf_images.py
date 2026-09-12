@@ -23,6 +23,7 @@ def row(item_id, url=URL):
 class ImageTests(unittest.TestCase):
     def setUp(self):
         images._cache.clear()
+        images._preview_cache.clear()
         self.env = patch.dict(os.environ, {}, clear=True)
         self.env.start()
         self.addCleanup(self.env.stop)
@@ -86,6 +87,29 @@ class ImageTests(unittest.TestCase):
                 with self.subTest(payload=payload), self.assertRaises(ValueError):
                     images.resolve_images(payload)
             fetch.assert_not_called()
+
+    def test_preview_uses_rows_without_filter_or_graph_and_caches(self):
+        payload = {"rows": [row("a"), row("a"), row("bad", "https://evil.example/a"), row("b")]}
+        with patch.object(images, "urlopen", return_value=io.BytesIO(json.dumps(payload).encode())) as fetch:
+            result = images.sample_catalog()
+            self.assertEqual(images.sample_catalog(), result)
+            self.assertEqual(fetch.call_count, 1)
+            request = fetch.call_args.args[0]
+            self.assertEqual(urlsplit(request.full_url).path, "/rows")
+            self.assertEqual(parse_qs(urlsplit(request.full_url).query)["length"], ["12"])
+        self.assertEqual([item["id"] for item in result["items"]], ["a", "b"])
+        self.assertFalse(result["ranked"])
+        self.assertNotIn("score", result["items"][0])
+
+    def test_preview_expiry_and_failure_do_not_restore_local_samples(self):
+        with patch.object(images, "time", return_value=1000) as clock, patch.object(images, "_fetch_rows", return_value=[row("a")]) as fetch:
+            images.sample_catalog()
+            clock.return_value = 1061
+            fetch.side_effect = TimeoutError
+            with self.assertLogs(images.__name__, level="WARNING"):
+                result = images.sample_catalog()
+        self.assertEqual(result["items"], [])
+        self.assertEqual(result["status"], "unavailable")
 
     def test_image_url_allowlist(self):
         for url in ["http://huggingface.co/a", "https://huggingface.co.evil.example/a", "https://user:pass@hf.co/a", "https://hf.co:80/a", "javascript:alert(1)"]:
