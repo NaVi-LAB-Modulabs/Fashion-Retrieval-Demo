@@ -36,7 +36,7 @@ async def response_headers(request: Request, call_next: Any) -> Any:
 
 @app.get("/", include_in_schema=False)
 def index() -> FileResponse:
-    return FileResponse(ROOT / "web" / "index.html")
+    return FileResponse(ROOT / "web" / "index.html", headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/api/config")
@@ -92,11 +92,15 @@ def hf_image(item_id: str, refresh: bool = False) -> Response:
     try:
         payload, content_type = fetch_image(item_id, refresh=refresh)
     except KeyError as exc:
+        logging.getLogger(__name__).warning("HF image not found item_id=%r", item_id)
         raise HTTPException(404, "Image not found") from exc
     except TimeoutError as exc:
         logging.getLogger(__name__).warning("HF image proxy timed out item_id=%s", item_id)
         raise HTTPException(504, "Image provider timed out") from exc
     except ValueError as exc:
+        logging.getLogger(__name__).warning(
+            "HF image proxy rejected item_id=%r reason=%s", item_id, str(exc)
+        )
         raise HTTPException(422, str(exc)) from exc
     except Exception as exc:
         logging.getLogger(__name__).warning(
