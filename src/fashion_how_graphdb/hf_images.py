@@ -165,7 +165,7 @@ def sample_catalog() -> dict[str, Any]:
     try:
         rows = _fetch_rows("https://datasets-server.huggingface.co/rows", {
             "dataset": source[0], "config": source[1], "split": source[2],
-            "offset": 0, "length": 12,
+            "offset": 0, "length": 100,
         })
         now = time()
         items = []
@@ -177,7 +177,7 @@ def sample_catalog() -> dict[str, Any]:
             item_id = row.get(source[3])
             image = row.get("image")
             url = image.get("src") if isinstance(image, dict) else None
-            if not isinstance(item_id, str) or not item_id.strip() or len(item_id) > 128 or item_id in seen or not is_image_url(url):
+            if not isinstance(item_id, str) or not item_id.endswith("_0") or len(item_id) > 128 or item_id in seen or not is_image_url(url):
                 continue
             expiry = _expires_at(url, now)
             if expiry <= now:
@@ -187,6 +187,8 @@ def sample_catalog() -> dict[str, Any]:
                              if isinstance(row.get(key), str) and row[key].strip()), "Garment")
             items.append({"id": item_id, "image_id": item_id, "image_url": url,
                           "image_expires_at": expiry, "type_name": category})
+            if len(items) == 12:
+                break
         with _cache_lock:
             if len(_preview_cache) >= 8:
                 _preview_cache.clear()

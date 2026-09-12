@@ -5,7 +5,7 @@
 The web UI uses the dataset-independent name **Fashion Search**. Fashion-How is
 temporary development data; the intended research demo dataset is **Fashion200K**.
 Dataset names belong in experiment documentation and provenance rather than the
-main interface. The initial preview reads up to 12 Fashion200K samples directly from Hugging Face, without querying Neo4j. Search results
+main interface. The initial preview reads up to 12 Fashion200K samples whose IDs end in `_0` from the first 100 Hugging Face rows, without querying Neo4j. Search results
 can resolve Fashion200K images by their original Hugging Face item ID; graph
 ingestion and schema mapping remain a separate step. Catalog preview labels distinguish unranked browsing from
 actual search results, without presenting a dataset as the product name.

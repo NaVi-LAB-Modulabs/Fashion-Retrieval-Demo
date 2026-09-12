@@ -46,7 +46,8 @@ class RetrievalTests(unittest.TestCase):
             result = service.retrieve({"query": "a blue blouse", **settings})
         return result, session, client
 
-    def test_graph_results_keep_evidence_and_hide_unknown_properties(self):
+    @patch.object(service, "image_index", return_value={"BL-001.jpg": Path("BL-001.jpg")})
+    def test_graph_results_keep_evidence_and_hide_unknown_properties(self, image_index):
         result, session, client = self.run_search([
             {"id": "BL-001", "type_code": "BL", "image_file": "BL-001.jpg", "score": .8,
              "description_embedding": [1, 2, 3], "internal_note": "private",
@@ -119,7 +120,7 @@ class RetrievalTests(unittest.TestCase):
         from fashion_how_graphdb import hf_images
         hf_images._preview_cache.clear()
         with patch.object(hf_images, "_fetch_rows", return_value=[{"row": {
-            "item_ID": "sample-id", "image": {"src": "https://hf.co/sample.jpg"},
+            "item_ID": "sample-id_0", "image": {"src": "https://hf.co/sample.jpg"},
         }}]):
             data = service.catalog_preview()
         self.assertFalse(data["ranked"])
@@ -146,7 +147,7 @@ class PreviewHTTPTests(unittest.TestCase):
         cls.thread.join()
 
     def test_assets_and_preview_endpoints(self):
-        for route in ["/", "/assets/styles.css", "/assets/app.js", "/images/BL-001.jpg"]:
+        for route in ["/", "/assets/styles.css", "/assets/app.js", "/assets/image-placeholder.svg"]:
             with self.subTest(route=route), urlopen(self.base + route) as response:
                 self.assertEqual(response.status, 200)
                 self.assertTrue(response.read())

@@ -89,20 +89,20 @@ class ImageTests(unittest.TestCase):
             fetch.assert_not_called()
 
     def test_preview_uses_rows_without_filter_or_graph_and_caches(self):
-        payload = {"rows": [row("a"), row("a"), row("bad", "https://evil.example/a"), row("b")]}
+        payload = {"rows": [row("a_1"), row("a_0"), row("a_0"), row("bad_0", "https://evil.example/a"), row("b_0"), row("c_00"), row("d0")]}
         with patch.object(images, "urlopen", return_value=io.BytesIO(json.dumps(payload).encode())) as fetch:
             result = images.sample_catalog()
             self.assertEqual(images.sample_catalog(), result)
             self.assertEqual(fetch.call_count, 1)
             request = fetch.call_args.args[0]
             self.assertEqual(urlsplit(request.full_url).path, "/rows")
-            self.assertEqual(parse_qs(urlsplit(request.full_url).query)["length"], ["12"])
-        self.assertEqual([item["id"] for item in result["items"]], ["a", "b"])
+            self.assertEqual(parse_qs(urlsplit(request.full_url).query)["length"], ["100"])
+        self.assertEqual([item["id"] for item in result["items"]], ["a_0", "b_0"])
         self.assertFalse(result["ranked"])
         self.assertNotIn("score", result["items"][0])
 
     def test_preview_expiry_and_failure_do_not_restore_local_samples(self):
-        with patch.object(images, "time", return_value=1000) as clock, patch.object(images, "_fetch_rows", return_value=[row("a")]) as fetch:
+        with patch.object(images, "time", return_value=1000) as clock, patch.object(images, "_fetch_rows", return_value=[row("a_0")]) as fetch:
             images.sample_catalog()
             clock.return_value = 1061
             fetch.side_effect = TimeoutError
