@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+import json
 import sys
+from uuid import uuid4
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +19,7 @@ from fashion_how_graphdb.web_service import (
     catalog_preview, configuration, image_index, retrieve, validate_request,
 )
 from fashion_how_graphdb.hf_images import resolve_images
+from fashion_how_graphdb.diagnostics import failure_details
 
 app = FastAPI(title="Fashion Search API", version="1.0.0")
 
@@ -64,11 +67,15 @@ def search(payload: dict[str, Any]) -> Any:
         raise HTTPException(503, "Search is not configured. Set the OpenAI and Neo4j environment variables on the server.")
     try:
         return retrieve(payload)
-    except Exception:
+    except Exception as exc:
         # Keep credentials, provider responses and database connection details off the client.
-        logging.getLogger(__name__).warning("Retrieval failed; check the configured providers.")
+        details = failure_details(exc)
+        error_id = uuid4().hex[:12]
+        logging.getLogger(__name__).error("Retrieval failed error_id=%s diagnostics=%s", error_id, json.dumps(details))
         return JSONResponse(status_code=502, content={
-            "detail": "Search could not finish. Check the server's OpenAI and Neo4j connections, then try again.",
+            "detail": f"Search failed during {details['stage']}. Reference: {error_id}. Check the server logs for this reference.",
+            "error_id": error_id,
+            "stage": details["stage"],
         })
 
 

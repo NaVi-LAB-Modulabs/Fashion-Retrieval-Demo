@@ -11,6 +11,7 @@ from typing import Any
 from urllib.parse import quote
 
 from . import search
+from .diagnostics import retrieval_stage
 from .cypher import (
     DEFAULT_NEO4J_DATABASE, DEFAULT_NEO4J_PASSWORD,
     DEFAULT_NEO4J_URI, DEFAULT_NEO4J_USER,
@@ -105,27 +106,31 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
     if not configuration()["ready"]:
         raise RuntimeError("Search is not configured. Set the OpenAI and Neo4j environment variables on the server.")
     started = perf_counter()
-    extraction = search.extract_search_filters(
-        request["query"], client=openai_client(), model=request["model"],
-    )
+    with retrieval_stage("query parsing"):
+        extraction = search.extract_search_filters(
+            request["query"], client=openai_client(), model=request["model"],
+        )
     parsed = perf_counter()
-    soft = search.needs_soft_rerank(extraction)
-    cypher, params = search.build_search_cypher(
-        extraction,
-        limit=search.soft_candidate_limit(request["limit"]) if soft else request["limit"],
-        min_confidence=request["min_confidence"],
-        min_score=None if soft else request["min_score"],
-    )
-    driver = neo4j_driver()
-    with driver.session(**({"database": DEFAULT_NEO4J_DATABASE} if DEFAULT_NEO4J_DATABASE else {})) as session:
-        from neo4j import Query
-        raw_results = [dict(row["result"]) for row in session.run(Query(cypher, timeout=30.0), **params)]
+    with retrieval_stage("query construction"):
+        soft = search.needs_soft_rerank(extraction)
+        cypher, params = search.build_search_cypher(
+            extraction,
+            limit=search.soft_candidate_limit(request["limit"]) if soft else request["limit"],
+            min_confidence=request["min_confidence"],
+            min_score=None if soft else request["min_score"],
+        )
+    with retrieval_stage("Neo4j retrieval"):
+        driver = neo4j_driver()
+        with driver.session(**({"database": DEFAULT_NEO4J_DATABASE} if DEFAULT_NEO4J_DATABASE else {})) as session:
+            from neo4j import Query
+            raw_results = [dict(row["result"]) for row in session.run(Query(cypher, timeout=30.0), **params)]
     retrieved = perf_counter()
-    items = search.rerank_search_results(
-        raw_results, extraction, client=openai_client() if soft else None,
-        embedding_model=search.DEFAULT_EMBEDDING_MODEL, limit=request["limit"],
-        min_score=request["min_score"] if soft else None,
-    )
+    with retrieval_stage("reranking"):
+        items = search.rerank_search_results(
+            raw_results, extraction, client=openai_client() if soft else None,
+            embedding_model=search.DEFAULT_EMBEDDING_MODEL, limit=request["limit"],
+            min_score=request["min_score"] if soft else None,
+        )
     # Only expose fields needed to explain retrieval; never serialize arbitrary DB properties.
     fields = ("id", "type_code", "type_name", "score", "graph_score", "text_score",
               "style_score", "score_components", "matched_filters", "mapped_attributes", "style_axis_matches")

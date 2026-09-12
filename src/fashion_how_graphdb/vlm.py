@@ -374,6 +374,10 @@ def _vlm_error(
     }
     if exc is not None:
         payload["type"] = exc.__class__.__name__
+        for key in ("status_code", "code", "param"):
+            value = getattr(exc, key, None)
+            if isinstance(value, (str, int)):
+                payload[key] = value
     for key, value in extra.items():
         if value is not None:
             payload[key] = value

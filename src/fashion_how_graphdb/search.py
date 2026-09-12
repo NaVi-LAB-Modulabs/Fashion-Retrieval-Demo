@@ -331,7 +331,9 @@ def extract_search_filters(
         json_schema_name="fashion_search_filters",
     )
     if raw is None:
-        raise RuntimeError(f"Search filter extraction failed: {error}")
+        failure = RuntimeError("Search filter extraction failed")
+        failure.provider_error = error
+        raise failure
     return normalize_extraction(raw)
 
 
