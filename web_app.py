@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from fashion_how_graphdb.web_service import (
     catalog_preview, configuration, image_index, retrieve, validate_request,
 )
+from fashion_how_graphdb.hf_images import resolve_images
 
 app = FastAPI(title="Fashion Search API", version="1.0.0")
 
@@ -69,6 +70,14 @@ def search(payload: dict[str, Any]) -> Any:
         return JSONResponse(status_code=502, content={
             "detail": "Search could not finish. Check the server's OpenAI and Neo4j connections, then try again.",
         })
+
+
+@app.post("/api/images")
+def images(payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        return resolve_images(payload)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 app.mount("/assets", StaticFiles(directory=ROOT / "web"), name="assets")

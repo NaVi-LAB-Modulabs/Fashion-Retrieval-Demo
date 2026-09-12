@@ -21,21 +21,96 @@ function notice(message = "", kind = "") {
   $("notice").hidden = !message;
 }
 
+const imageCache = new Map();
+const imageRequests = new Map();
+const refreshQueue = new Set();
+let refreshTimer;
+
+function safeImageSource(value) {
+  if (typeof value !== "string") return null;
+  if (value.startsWith("/images/")) return value;
+  try {
+    const url = new URL(value);
+    const allowed = ["huggingface.co", "hf.co"].some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`));
+    return url.protocol === "https:" && !url.username && !url.password && (!url.port || url.port === "443") && allowed ? value : null;
+  } catch { return null; }
+}
+
 function imageMarkup(item, className = "") {
-  // Image URLs are local catalog endpoints, never arbitrary URLs from the database.
-  const src = typeof item.image_url === "string" && item.image_url.startsWith("/images/") ? item.image_url : null;
-  return src ? `<img class="${className}" src="${escapeHTML(src)}" alt="${escapeHTML(item.type_name || "Garment")} ${escapeHTML(item.id)}" loading="lazy">` : '<span class="image-missing">Image<br>unavailable</span>';
+  const src = safeImageSource(item.image_url);
+  const remoteId = typeof item.image_id === "string" && item.image_id ? item.image_id : null;
+  if (!src && !remoteId) return '<span class="image-missing">Image unavailable</span>';
+  return `<img class="${className}" src="${escapeHTML(src || "/assets/image-placeholder.svg")}"${remoteId ? ` data-image-id="${escapeHTML(remoteId)}"` : ""} alt="${escapeHTML(item.type_name || "Garment")} ${escapeHTML(item.id)}" loading="lazy" referrerpolicy="no-referrer">`;
+}
+
+async function resolveImageIds(ids, refresh = false) {
+  const wanted = [...new Set(ids)];
+  const needed = wanted.filter((id) => !imageRequests.has(id) && (refresh || !imageCache.has(id) || imageCache.get(id).expires_at * 1000 <= Date.now()));
+  for (let offset = 0; offset < needed.length; offset += 50) {
+    const batch = needed.slice(offset, offset + 50);
+    const request = api("/api/images", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({item_ids: batch, refresh}),
+    }).catch(() => ({images: {}}));
+    for (const id of batch) {
+      const itemRequest = request.then((data) => {
+        const entry = data.images?.[id];
+        const url = safeImageSource(entry?.url);
+        const expires = typeof entry?.expires_at === "number" ? entry.expires_at : 0;
+        const value = url && expires * 1000 > Date.now()
+          ? {url, expires_at: expires}
+          : {url: null, expires_at: Date.now() / 1000 + 15};
+        imageCache.delete(id);
+        imageCache.set(id, value);
+        while (imageCache.size > 500) imageCache.delete(imageCache.keys().next().value);
+        return value;
+      }).finally(() => imageRequests.delete(id));
+      imageRequests.set(id, itemRequest);
+    }
+  }
+  return new Map(await Promise.all(wanted.map(async (id) => [id, imageRequests.has(id) ? await imageRequests.get(id) : imageCache.get(id)])));
+}
+
+function missingImage(img) {
+  if (!img.isConnected) return;
+  const fallback = document.createElement("span");
+  fallback.className = "image-missing";
+  fallback.textContent = "Image unavailable";
+  img.replaceWith(fallback);
+}
+
+async function loadRemoteImages(images, refresh = false) {
+  if (!images.length) return;
+  const resolved = await resolveImageIds(images.map((img) => img.dataset.imageId), refresh);
+  for (const img of images) {
+    if (!img.isConnected) continue;
+    const url = resolved.get(img.dataset.imageId)?.url;
+    if (url) img.src = url;
+    else missingImage(img);
+  }
 }
 
 function handleImageErrors(container) {
+  const remoteImages = [];
   container.querySelectorAll("img").forEach((img) => {
+    if (img.dataset.imageBound) return;
+    img.dataset.imageBound = "true";
     img.addEventListener("error", () => {
-      const fallback = document.createElement("span");
-      fallback.className = "image-missing";
-      fallback.textContent = "Image unavailable";
-      img.replaceWith(fallback);
-    }, { once: true });
+      if (!img.dataset.imageId || img.dataset.imageRetried) { missingImage(img); return; }
+      // Batch simultaneous failures and bypass the short URL cache once.
+      img.dataset.imageRetried = "true";
+      refreshQueue.add(img);
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        const pending = [...refreshQueue].filter((node) => node.isConnected);
+        refreshQueue.clear();
+        loadRemoteImages(pending, true);
+      }, 50);
+    });
+    if (img.dataset.imageId) remoteImages.push(img);
+    else if (img.complete && !img.naturalWidth) missingImage(img);
   });
+  loadRemoteImages(remoteImages);
 }
 
 function renderItems() {

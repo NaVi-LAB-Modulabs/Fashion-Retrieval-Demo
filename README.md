@@ -5,9 +5,9 @@
 The web UI uses the dataset-independent name **Fashion Search**. Fashion-How is
 temporary development data; the intended research demo dataset is **Fashion200K**.
 Dataset names belong in experiment documentation and provenance rather than the
-main interface. The current implementation still uses the bundled Fashion-How
-images and existing graph schema; Fashion200K ingestion and schema mapping have
-not been implemented. Catalog preview labels distinguish unranked browsing from
+main interface. The initial preview uses bundled Fashion-How images. Search results
+can resolve Fashion200K images by their original Hugging Face item ID; graph
+ingestion and schema mapping remain a separate step. Catalog preview labels distinguish unranked browsing from
 actual search results, without presenting a dataset as the product name.
 
 The web UI is a retrieval workspace: query and settings at the top, followed by
@@ -65,7 +65,7 @@ deployment. API reference: `/docs`.
 
 Static UI assets are mounted at `/assets`; `/images/{filename}` serves only indexed
 catalog images. The nine bundled sample images total about 0.5 MB. Items whose
-images are absent remain visible with an image-unavailable placeholder.
+local images are absent are resolved by ID through the image lookup API below.
 Review the function duration available to the project before a live demo: parser
 and embedding calls can take time, especially when provider retries are needed.
 
@@ -101,6 +101,41 @@ OPENAI_MODEL
 OPENAI_EMBEDDING_MODEL
 ```
 
+## Fashion200K images from Hugging Face
+
+The live web app does not need a local copy of Fashion200K images. It returns
+`image_id` with each result lacking a bundled image, using the Neo4j `item_ID`
+property if present, otherwise `id`. Preserve the original ID, including its
+image suffix (for example, `51727804_0`).
+
+After rendering the search evidence, the browser sends up to 50 IDs per request
+to `POST /api/images`. The server uses the Dataset Viewer `/filter` endpoint with
+OR predicates and maps returned rows by ID, independently of their order. Images
+are loaded directly from Hugging Face; no image files or image bytes are stored
+in the repository, database or Vercel function. Requests for image metadata do not
+change the retrieval ranking or its measured stage timings.
+
+Defaults (no extra Vercel configuration is required for this public dataset):
+
+| Variable | Default |
+| --- | --- |
+| `HF_IMAGE_DATASET` | `Marqo/fashion200k` |
+| `HF_IMAGE_CONFIG` | `default` |
+| `HF_IMAGE_SPLIT` | `data` |
+| `HF_IMAGE_ID_COLUMN` | `item_ID` |
+| `HF_TOKEN` | Unset; optional server-side read token |
+
+Signed image URLs are cached in memory for at most 60 seconds (shorter when a
+known expiry approaches). Missing IDs are cached for 30 seconds. If an image
+fails to load, the browser requests a fresh URL once. Provider errors, missing
+IDs and failed images produce an image-unavailable placeholder while retaining
+all search results and evidence. Exported runs retain image IDs, not the fetched
+temporary URLs. Lookup speed and availability depend on the external service.
+`preview.py` stays offline and uses bundled sample images only.
+
+API reference: [filter predicates](https://huggingface.co/docs/dataset-viewer/filter)
+and [temporary image URLs](https://huggingface.co/docs/dataset-viewer/rows).
+
 ## Demo Structure
 
 ```text
@@ -126,8 +161,9 @@ OPENAI_EMBEDDING_MODEL
 
 ## Neo4j Item Properties
 
-For image display, each `Item` should include an `image_file` property that
-matches a file under `fashion-how/image`.
+For Fashion200K images, each `Item` should preserve the Hugging Face `item_ID`
+as `id` (or supply a separate `item_ID` property). For bundled local images, an
+optional `image_file` property can match a file under `fashion-how/image`.
 
 For description-vector reranking, each `Item` can include one of:
 

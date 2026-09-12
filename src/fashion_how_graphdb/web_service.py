@@ -132,7 +132,11 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
     results = []
     for rank, item in enumerate(items, 1):
         public = {key: item.get(key) for key in fields}
-        public.update(rank=rank, image_url=image_url(item.get("image_file")))
+        local_url = image_url(item.get("image_file"))
+        item_id = item.get("item_ID") or item.get("id")
+        public["id"] = item.get("id") or item_id
+        public.update(rank=rank, image_url=local_url,
+                      image_id=str(item_id) if item_id is not None and not local_url else None)
         public["type_name"] = item.get("type_name") or TYPE_NAMES.get(item.get("type_code"), "Garment")
         results.append(public)
     finished = perf_counter()

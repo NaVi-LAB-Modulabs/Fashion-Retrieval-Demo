@@ -59,6 +59,7 @@ class RetrievalTests(unittest.TestCase):
         self.assertNotIn("description_embedding", item)
         self.assertNotIn("internal_note", item)
         self.assertEqual(item["image_url"], "/images/BL-001.jpg")
+        self.assertIsNone(item["image_id"])
         self.assertEqual(result["params"]["min_confidence"], .5)
         self.assertEqual(result["params"]["min_score"], .4)
         self.assertIn("$value_0", result["cypher"])
@@ -82,6 +83,14 @@ class RetrievalTests(unittest.TestCase):
         self.assertEqual(result["items"][0]["score_components"], ["graph", "text", "style"])
         self.assertEqual(result["items"][1]["score_components"], ["graph"])
         self.assertIsNone(result["items"][1]["image_url"])
+
+    def test_huggingface_ids_are_returned_without_image_network_calls(self):
+        result, _, _ = self.run_search([
+            {"id": "51727804_0", "score": .8},
+            {"id": "graph-id", "item_ID": "hf-id", "score": .7},
+        ])
+        self.assertEqual([item["image_id"] for item in result["items"]], ["51727804_0", "hf-id"])
+        self.assertTrue(all(item["image_url"] is None for item in result["items"]))
 
     def test_empty_candidates_are_a_successful_explainable_run(self):
         result, _, _ = self.run_search([])
