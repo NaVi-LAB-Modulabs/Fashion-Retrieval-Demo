@@ -131,6 +131,8 @@ fails to load, the browser requests a fresh URL once. Provider errors, missing
 IDs and failed images produce an image-unavailable placeholder while retaining
 all search results and evidence. Exported runs retain image IDs, not the fetched
 temporary URLs. Lookup speed and availability depend on the external service.
+Image metadata requests allow up to 20 seconds because a cold Dataset Viewer
+filter over Fashion200K can take longer than a typical API request.
 `preview.py` also loads the Hugging Face samples and supports image URL refresh. It needs internet access for images, but does not call OpenAI or Neo4j. Preview metadata is cached for at most 60 seconds; failures show an empty preview instead of switching to local samples.
 
 API reference: [filter predicates](https://huggingface.co/docs/dataset-viewer/filter)

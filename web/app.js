@@ -51,6 +51,7 @@ async function resolveImageIds(ids, refresh = false) {
     const request = api("/api/images", {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({item_ids: batch, refresh}),
+      signal: AbortSignal.timeout(30000),
     }).catch(() => ({images: {}}));
     for (const id of batch) {
       const itemRequest = request.then((data) => {

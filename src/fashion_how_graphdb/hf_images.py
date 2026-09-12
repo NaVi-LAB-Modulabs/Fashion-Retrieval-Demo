@@ -17,6 +17,7 @@ from urllib.request import Request, urlopen
 API_URL = "https://datasets-server.huggingface.co/filter"
 MAX_IDS = 50
 MAX_RESPONSE_BYTES = 2_000_000
+IMAGE_METADATA_TIMEOUT_SECONDS = 20
 CACHE_SIZE = 2048
 _cache: OrderedDict[tuple[str, ...], tuple[float, str | None]] = OrderedDict()
 _cache_lock = Lock()
@@ -88,7 +89,9 @@ def _fetch_rows(endpoint: str, params: dict[str, Any]) -> list[Any]:
     if token:
         headers["Authorization"] = f"Bearer {token}"
     request = Request(endpoint + "?" + urlencode(params), headers=headers)
-    with urlopen(request, timeout=8) as response:
+    # The viewer may need to scan a cold Fashion200K parquet shard before it can
+    # evaluate the filter. Eight seconds was too short in production on Vercel.
+    with urlopen(request, timeout=IMAGE_METADATA_TIMEOUT_SECONDS) as response:
         raw = response.read(MAX_RESPONSE_BYTES + 1)
     if len(raw) > MAX_RESPONSE_BYTES:
         raise ValueError("Image metadata response is too large.")

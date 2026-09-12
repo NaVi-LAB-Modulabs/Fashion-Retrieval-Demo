@@ -38,7 +38,7 @@ class ImageTests(unittest.TestCase):
         self.assertEqual(params["split"], ["data"])
         self.assertEqual(request.get_header("Authorization"), "Bearer test-token")
         self.assertNotIn("test-token", request.full_url)
-        self.assertEqual(fetch.call_args.kwargs["timeout"], 8)
+        self.assertEqual(fetch.call_args.kwargs["timeout"], images.IMAGE_METADATA_TIMEOUT_SECONDS)
         self.assertEqual(result["missing_ids"], ["second"])
         self.assertEqual(result["images"]["a'b"]["url"], URL)
 
