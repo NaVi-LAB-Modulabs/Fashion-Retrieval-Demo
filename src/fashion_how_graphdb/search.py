@@ -1,4 +1,4 @@
-"""Natural-language search over the Fashion-How Neo4j graph."""
+"""Natural-language search over the Fashion-200K Neo4j graph."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ except ImportError:
     pass
 
 from .category_taxonomy import CATEGORY_ATTRIBUTES, category_attribute_id
-from .cypher import (
+from .neo4j_config import (
     DEFAULT_NEO4J_DATABASE,
     DEFAULT_NEO4J_PASSWORD,
     DEFAULT_NEO4J_URI,
@@ -28,13 +28,11 @@ from .cypher import (
 from .taxonomy import (
     COLORS,
     MATERIALS,
-    OCCASIONS,
     PATTERNS,
     SEASONS,
-    STYLES,
-    TYPE_NAMES,
+    CATEGORY_NAMES,
 )
-from .vlm import call_text_json_with_error, default_model
+from .llm import call_text_json_with_error, default_model
 
 COMMON_FILTER_GROUPS = {
     "colors": {
@@ -48,18 +46,6 @@ COMMON_FILTER_GROUPS = {
         "rel_type": "HAS_MATERIAL",
         "node_label": "Material",
         "values": MATERIALS,
-    },
-    "styles": {
-        "label": "Style",
-        "rel_type": "HAS_STYLE",
-        "node_label": "Style",
-        "values": STYLES,
-    },
-    "occasions": {
-        "label": "Occasion",
-        "rel_type": "HAS_OCCASION",
-        "node_label": "Occasion",
-        "values": OCCASIONS,
     },
     "patterns": {
         "label": "Pattern",
@@ -139,15 +125,12 @@ DESCRIPTION_EMBEDDING_PROPERTIES = (
 
 DEFAULT_EMBEDDING_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-large")
 
-SEARCH_CATEGORY_TYPE_MEMBERS = {
-    "OT": {"CT", "CD", "JK", "JP"},
-    "TO": {"VT", "SW", "SH", "BL", "KN"},
-    "PT": {"PT"},
-    "SK": {"SK"},
-}
-
-
-SYSTEM_PROMPT = """You convert Korean fashion search text into graph filters.
+SYSTEM_PROMPT = """You convert Korean or English fashion search text into Fashion-200K graph filters.
+Map either input language to the exact English identifiers in the catalog.
+item_type_codes are Fashion-200K category IDs: dresses, jackets, pants, skirts, tops.
+Only colors, materials, patterns, and seasons are common hard-filter groups.
+Use description_query for wearing occasions and style_axis_targets for supported
+style intent; there are no styles or occasions graph filters.
 
 Use only values that appear in the provided catalog. Never invent values.
 Return extracted values exactly as they appear in the provided catalog.
@@ -162,17 +145,14 @@ Attribute guidance:
 - colors, materials, patterns, and category details should describe the garment
   itself. A place, event, activity, or mood is not a fabric pattern, material,
   color, sleeve, collar, pocket, or fit unless the garment property is described.
-- occasions and styles can be subjective. Extract them when the query gives a
-  clear wearing context, event, social situation, or aesthetic direction, and
-  choose the closest catalog value within a reasonable interpretation.
 - seasons may be inferred from explicit season words or strong seasonal wearing
   context, but avoid weak associations.
 
 Minimal examples:
-- "결혼식에 입고갈" can imply the occasion value "하객" if that value is in
-  the catalog.
-- "꽃놀이" is an activity/occasion clue; do not extract pattern "플라워" unless
-  the query describes the garment as 꽃무늬/플라워/floral.
+- "?? ????" or "blue blouse": item_type_codes ["tops"], color "blue".
+- "???? ???" is wearing-context meaning for description_query.
+- "???" is an activity clue; do not extract "floral" unless the query
+  describes the garment as ???/???/floral.
 
 For negated conditions such as "흰색이 아닌", "화이트 제외", or "not white",
 put the value in excluded_common_filters or excluded_category_filters instead of
@@ -205,7 +185,7 @@ def search_catalog() -> dict[str, Any]:
     category_groups: dict[str, Any] = {}
     for type_code, config in CATEGORY_ATTRIBUTES.items():
         category_groups[type_code] = {
-            "name": TYPE_NAMES.get(type_code, type_code),
+            "name": CATEGORY_NAMES.get(type_code, type_code),
             "domain": config["domain"],
             "groups": {
                 group_id: {
@@ -217,7 +197,7 @@ def search_catalog() -> dict[str, Any]:
             },
         }
     return {
-        "item_types": TYPE_NAMES,
+        "item_types": CATEGORY_NAMES,
         "common_groups": {
             group_id: {
                 "name": spec["label"],
@@ -277,7 +257,7 @@ def extraction_schema() -> dict[str, Any]:
         "properties": {
             "item_type_codes": {
                 "type": "array",
-                "items": {"type": "string", "enum": list(TYPE_NAMES)},
+                "items": {"type": "string", "enum": list(CATEGORY_NAMES)},
             },
             "common_filters": common_filter_schema,
             "category_filters": category_filter_schema,
@@ -341,7 +321,7 @@ def normalize_extraction(raw: dict[str, Any]) -> dict[str, Any]:
     type_codes = [
         code
         for code in dict.fromkeys(raw.get("item_type_codes") or [])
-        if code in TYPE_NAMES
+        if code in CATEGORY_NAMES
     ]
 
     common_filters = _normalize_common_filters(raw.get("common_filters"))
@@ -420,8 +400,7 @@ def _category_type_is_compatible(
 ) -> bool:
     if not item_type_codes:
         return True
-    members = SEARCH_CATEGORY_TYPE_MEMBERS.get(category_type_code, {category_type_code})
-    return any(type_code in members for type_code in item_type_codes)
+    return category_type_code in item_type_codes
 
 
 def _to_float(value: Any) -> float | None:
@@ -665,8 +644,8 @@ def build_search_cypher(
     matched_terms = []
 
     if params["item_type_codes"]:
-        lines.append("MATCH (item)-[:IS_TYPE]->(item_type:ItemType)")
-        where_lines.append("item_type.id IN $item_type_codes")
+        lines.append("MATCH (item)-[:IS_CATEGORY]->(item_category:Category)")
+        where_lines.append("item_category.id IN $item_type_codes")
 
     filter_index = 0
     for item in extraction.get("common_filters") or []:
@@ -761,7 +740,7 @@ def build_search_cypher(
             "  WITH item",
             "  OPTIONAL MATCH (item)-[mapped_rel]->(mapped_node)",
             "  WHERE type(mapped_rel) IN [",
-            "    'HAS_COLOR', 'HAS_MATERIAL', 'HAS_STYLE', 'HAS_OCCASION',",
+            "    'HAS_COLOR', 'HAS_MATERIAL',",
             "    'HAS_PATTERN', 'HAS_SEASON', 'HAS_ATTRIBUTE'",
             "  ]",
             "  WITH collect({",
@@ -773,8 +752,6 @@ def build_search_cypher(
             "    group: coalesce(mapped_node.group, CASE type(mapped_rel)",
             "      WHEN 'HAS_COLOR' THEN 'colors'",
             "      WHEN 'HAS_MATERIAL' THEN 'materials'",
-            "      WHEN 'HAS_STYLE' THEN 'styles'",
-            "      WHEN 'HAS_OCCASION' THEN 'occasions'",
             "      WHEN 'HAS_PATTERN' THEN 'patterns'",
             "      WHEN 'HAS_SEASON' THEN 'seasons'",
             "      ELSE null",
@@ -838,7 +815,7 @@ def run_search(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Search Fashion-How Neo4j GraphDB with a natural-language query.",
+        description="Search Fashion-200K Neo4j GraphDB with a natural-language query.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("query", nargs="?", help="Natural-language fashion query.")

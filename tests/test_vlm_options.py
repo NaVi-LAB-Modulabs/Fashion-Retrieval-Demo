@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import MagicMock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from fashion_how_graphdb.vlm import call_text_json_with_error
+from fashion_how_graphdb.llm import call_text_json_with_error
 
 
 class ParserOptionsTests(unittest.TestCase):

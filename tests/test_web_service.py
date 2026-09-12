@@ -23,7 +23,7 @@ from preview import PreviewHandler
 class RetrievalTests(unittest.TestCase):
     def setUp(self):
         self.extraction = {
-            "item_type_codes": ["BL"],
+            "item_type_codes": ["tops"],
             "common_filters": [{"group": "colors", "value": "blue"}],
             "category_filters": [], "excluded_common_filters": [],
             "excluded_category_filters": [], "description_query": "",
@@ -92,6 +92,15 @@ class RetrievalTests(unittest.TestCase):
         ])
         self.assertEqual([item["image_id"] for item in result["items"]], ["51727804_0", "hf-id"])
         self.assertTrue(all(item["image_url"] is None for item in result["items"]))
+
+    def test_fashion200k_category_properties_supply_display_type(self):
+        result, _, _ = self.run_search([
+            {"id": "51727804_0", "category": "tops", "category_name": "tops", "score": .8},
+        ])
+        self.assertEqual(result["items"][0]["type_code"], "tops")
+        self.assertEqual(result["items"][0]["type_name"], "tops")
+        self.assertEqual(result["params"]["item_type_codes"], ["tops"])
+        self.assertIn("IS_CATEGORY", result["cypher"])
 
     def test_empty_candidates_are_a_successful_explainable_run(self):
         result, _, _ = self.run_search([])

@@ -9,7 +9,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from fashion_how_graphdb.diagnostics import RetrievalFailure, failure_details, retrieval_stage
 from fashion_how_graphdb import search
-from fashion_how_graphdb.vlm import _vlm_error
+from fashion_how_graphdb.llm import _llm_error
 
 
 class DiagnosticTests(unittest.TestCase):
@@ -31,7 +31,7 @@ class DiagnosticTests(unittest.TestCase):
         cause.status_code = 400
         cause.code = "unsupported_parameter"
         cause.param = "temperature"
-        error = _vlm_error(stage="api_call", model="test", exc=cause)
+        error = _llm_error(stage="api_call", model="test", exc=cause)
         with patch.object(search, "call_text_json_with_error", return_value=(None, error)):
             with self.assertRaises(RetrievalFailure) as caught:
                 with retrieval_stage("query parsing"):

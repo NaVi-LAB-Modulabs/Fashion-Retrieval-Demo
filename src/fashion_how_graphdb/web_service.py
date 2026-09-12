@@ -12,12 +12,12 @@ from urllib.parse import quote
 
 from . import search
 from .diagnostics import retrieval_stage
-from .cypher import (
+from .neo4j_config import (
     DEFAULT_NEO4J_DATABASE, DEFAULT_NEO4J_PASSWORD,
     DEFAULT_NEO4J_URI, DEFAULT_NEO4J_USER,
 )
-from .taxonomy import TYPE_NAMES
-from .vlm import default_model
+from .taxonomy import CATEGORY_NAMES
+from .llm import default_model
 
 ROOT = Path(__file__).resolve().parents[2]
 IMAGE_DIR = ROOT / "fashion-how" / "image"
@@ -48,7 +48,7 @@ def configuration(*, preview: bool = False) -> dict[str, Any]:
         "image_count": len(image_index()),
         "type_count": len(catalog["item_types"]),
         "style_axis_count": len(catalog["style_axes"]),
-        "type_names": TYPE_NAMES,
+        "type_names": CATEGORY_NAMES,
         "style_axes": search.STYLE_AXES,
     }
 
@@ -128,7 +128,7 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
             min_score=request["min_score"] if soft else None,
         )
     # Only expose fields needed to explain retrieval; never serialize arbitrary DB properties.
-    fields = ("id", "type_code", "type_name", "score", "graph_score", "text_score",
+    fields = ("id", "category", "category_name", "type_code", "type_name", "score", "graph_score", "text_score",
               "style_score", "score_components", "matched_filters", "mapped_attributes", "style_axis_matches")
     results = []
     for rank, item in enumerate(items, 1):
@@ -138,7 +138,8 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
         public["id"] = item.get("id") or item_id
         public.update(rank=rank, image_url=local_url,
                       image_id=str(item_id) if item_id is not None and not local_url else None)
-        public["type_name"] = item.get("type_name") or TYPE_NAMES.get(item.get("type_code"), "Garment")
+        public["type_code"] = item.get("category") or item.get("type_code")
+        public["type_name"] = item.get("category_name") or item.get("type_name") or CATEGORY_NAMES.get(public["type_code"], "Garment")
         results.append(public)
     finished = perf_counter()
     return {

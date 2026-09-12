@@ -153,11 +153,15 @@ and [temporary image URLs](https://huggingface.co/docs/dataset-viewer/rows).
     `-- fashion_how_graphdb/
         |-- web_service.py         # retrieval API adapter and image catalog
         |-- search.py              # query parsing, Cypher build, reranking
-        |-- cypher.py              # Neo4j defaults and import helpers
+        |-- neo4j_config.py        # Neo4j connection defaults
         |-- taxonomy.py
         |-- category_taxonomy.py
-        `-- vlm.py                 # OpenAI Responses API helpers
+        `-- llm.py                 # text-only search query parsing
 ```
+
+This demo only searches an existing Fashion-200K graph. Image attribute extraction
+and graph import are handled by the separate Fashion-Retrieval project.
+Search uses `(Item)-[:IS_CATEGORY]->(Category)` and the English taxonomy IDs.
 
 ## Neo4j Item Properties
 

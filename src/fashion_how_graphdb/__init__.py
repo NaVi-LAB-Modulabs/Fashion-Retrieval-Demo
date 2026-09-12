@@ -1,4 +1,4 @@
-"""Fashion-How GraphDB extraction package."""
+"""Fashion-200K graph search and retrieval demo."""
 
 __all__ = ["__version__"]
 
