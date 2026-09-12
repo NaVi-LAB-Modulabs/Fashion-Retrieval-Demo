@@ -148,7 +148,11 @@ def _create_kwargs(model: str) -> dict[str, Any]:
         "model": model,
         "max_output_tokens": MAX_TOKENS,
     }
-    if not (model == "gpt-5.5" or model.startswith("gpt-5.5-")):
+    # Sampling options are not universally supported by reasoning models.
+    # Keep deterministic sampling for the established non-reasoning families;
+    # use provider defaults for other models, including GPT-5 and o-series.
+    if any(model == family or model.startswith(family + "-")
+           for family in ("gpt-4.1", "gpt-4o")):
         kwargs["temperature"] = 0
     return kwargs
 
