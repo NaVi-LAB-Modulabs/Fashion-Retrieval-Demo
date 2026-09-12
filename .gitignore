@@ -6,3 +6,5 @@ venv/
 .cache/
 outputs/
 *.log
+.pytest_cache/
+.vercel/

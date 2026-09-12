@@ -1,0 +1,11 @@
+.env
+.env.*
+.venv/
+venv/
+__pycache__/
+**/__pycache__/
+outputs/
+tests/
+.pytest_cache/
+.git/
+preview.py

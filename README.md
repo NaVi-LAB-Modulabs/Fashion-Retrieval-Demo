@@ -1,26 +1,90 @@
----
-title: Fashion-How Graph Search
-colorFrom: green
-colorTo: indigo
-sdk: gradio
-app_file: app.py
-pinned: false
----
+# Fashion Search
 
-# Fashion-How Graph Search
+## Web experience
 
-Demo for natural-language fashion retrieval over a Neo4j attribute graph. The
-system parses a user query into structured graph constraints, executes the
-generated Cypher query, and optionally reranks candidates with text and style
-signals.
+The web UI uses the dataset-independent name **Fashion Search**. Fashion-How is
+temporary development data; the intended research demo dataset is **Fashion200K**.
+Dataset names belong in experiment documentation and provenance rather than the
+main interface. The current implementation still uses the bundled Fashion-How
+images and existing graph schema; Fashion200K ingestion and schema mapping have
+not been implemented. Catalog preview labels distinguish unranked browsing from
+actual search results, without presenting a dataset as the product name.
 
-This Space is prepared for an ECIR demo-track style walkthrough: the UI shows
-ranked fashion items, extracted filters, graph candidates, score components, and
-the final Cypher query used for retrieval.
+The web UI is a retrieval workspace: query and settings at the top, followed by
+extracted constraints, executed Cypher and ranked results in three adjacent panes.
+Cypher stays visible without opening an accordion. Parameter values, applied
+settings and measured stage timings are shown alongside the query. Image cards
+include component scores; a table and item details provide more ranking evidence.
+Raw parser/parameter JSON and run export remain available for inspection.
+Before a search, analysis panes show empty states rather than fabricated examples.
 
-## Required Space Secrets
+It uses HTML, CSS and JavaScript served by FastAPI; no Node.js
+or frontend build is required. The application entrypoint is `web_app.py`.
 
-Set these in the Hugging Face Space settings:
+Features include responsive image cards, an optional ranking table, natural
+language examples, parser/threshold controls, extracted and excluded constraints,
+style-axis targets, per-item score breakdowns and mapped attributes, exact Cypher
+and parameters, measured stage timings, and downloadable JSON search runs.
+The initial gallery is explicitly an **unranked catalog preview**, with no invented
+scores or attributes. Live results always come from the existing retrieval code.
+
+### Run the web UI
+
+Use Python 3.11–3.13 and Windows Command Prompt:
+
+```cmd
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+.venv\Scripts\python.exe web_app.py
+```
+
+Open `http://127.0.0.1:7860`. Configure the variables below in a root `.env` file
+or the server environment to enable live search. Credentials stay on the server.
+The status indicator reports configuration presence, not verified connectivity.
+No local GPU is required by the web retrieval path.
+
+To view the design without installing packages or calling external services:
+
+```cmd
+python preview.py
+```
+
+This uses the same UI and local images on port 7860, with live search explicitly
+disabled. Stop it with Ctrl+C before starting `web_app.py` on the same port.
+
+### Deploy the web UI to Vercel
+
+Import this repository into Vercel and select the **FastAPI** framework preset.
+`pyproject.toml` specifies `web_app:app` as the entrypoint and lists the application
+dependencies. `.vercelignore` excludes local environment files, development
+artifacts and the preview server from uploads. There is no frontend build command. Set
+`OPENAI_API_KEY`, `NEO4J_URI`, `NEO4J_USERNAME` and `NEO4J_PASSWORD` in the project
+environment, plus any optional model/database settings listed below. Redeploy
+after changing environment variables. Use a Neo4j endpoint reachable from the
+deployment. API reference: `/docs`.
+
+Static UI assets are mounted at `/assets`; `/images/{filename}` serves only indexed
+catalog images. The nine bundled sample images total about 0.5 MB. Items whose
+images are absent remain visible with an image-unavailable placeholder.
+Review the function duration available to the project before a live demo: parser
+and embedding calls can take time, especially when provider retries are needed.
+
+Vercel configuration follows the [official FastAPI deployment guide](https://vercel.com/docs/frameworks/backend/fastapi).
+
+### Verification
+
+```cmd
+python -m unittest discover -s tests -v
+```
+
+The service tests use provider doubles to verify real Cypher generation,
+reranking, thresholds, safe response fields and preview semantics without API
+charges. They do not establish connectivity to a deployed database or provider.
+
+## Environment variables
+
+Set these in the server environment or a local `.env` file. For deployment,
+register the values in the Vercel project's environment variables:
 
 ```text
 OPENAI_API_KEY
@@ -37,32 +101,22 @@ OPENAI_MODEL
 OPENAI_EMBEDDING_MODEL
 ```
 
-## Local Run
-
-Use Windows Command Prompt:
-
-```cmd
-cd /d C:\Users\jiyoo\GithubRepo\Fashion-Retrieval-Demo
-set PYTHONPATH=src
-python app.py
-```
-
-Open:
-
-```text
-http://127.0.0.1:7860
-```
-
 ## Demo Structure
 
 ```text
 .
-|-- app.py                         # Gradio Space entry point
-|-- requirements.txt
+|-- web_app.py                     # FastAPI application entrypoint
+|-- preview.py                     # dependency-free, offline UI preview
+|-- web/                           # HTML, CSS, JavaScript and favicon
+|-- requirements.txt              # application dependencies for local install
+|-- pyproject.toml                 # project dependencies and Vercel entrypoint
+|-- vercel.json                    # FastAPI deployment preset
+|-- tests/                         # offline service and preview tests
 |-- fashion-how/
 |   `-- image/                     # sample image assets
 `-- src/
     `-- fashion_how_graphdb/
+        |-- web_service.py         # retrieval API adapter and image catalog
         |-- search.py              # query parsing, Cypher build, reranking
         |-- cypher.py              # Neo4j defaults and import helpers
         |-- taxonomy.py
