@@ -135,9 +135,10 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
         public = {key: item.get(key) for key in fields}
         local_url = image_url(item.get("image_file"))
         item_id = item.get("item_ID") or item.get("id")
+        remote_id = str(item_id) if item_id is not None and not local_url else None
+        remote_url = f"/images/hf/{quote(remote_id, safe='')}.jpg" if remote_id else None
         public["id"] = item.get("id") or item_id
-        public.update(rank=rank, image_url=local_url,
-                      image_id=str(item_id) if item_id is not None and not local_url else None)
+        public.update(rank=rank, image_url=local_url or remote_url, image_id=remote_id)
         public["type_code"] = item.get("category") or item.get("type_code")
         public["type_name"] = item.get("category_name") or item.get("type_name") or CATEGORY_NAMES.get(public["type_code"], "Garment")
         results.append(public)

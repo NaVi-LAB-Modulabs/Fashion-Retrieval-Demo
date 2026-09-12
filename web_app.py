@@ -57,6 +57,11 @@ def image(filename: str) -> FileResponse:
     return FileResponse(path, headers={"Cache-Control": "public, max-age=86400"})
 
 
+@app.get("/images/hf/{item_id}.jpg", include_in_schema=False)
+def hf_image_compatible(item_id: str, refresh: bool = False) -> Response:
+    return hf_image(item_id, refresh)
+
+
 @app.post("/api/search")
 def search(payload: dict[str, Any]) -> Any:
     try:

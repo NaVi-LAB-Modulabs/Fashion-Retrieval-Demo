@@ -20,8 +20,10 @@ class PreviewHandler(BaseHTTPRequestHandler):
             data = configuration(preview=True) if path.endswith("config") else catalog_preview()
             self.send_data(json.dumps(data, ensure_ascii=False).encode(), "application/json")
             return
-        if path.startswith("/api/image/") and path.endswith(".jpg"):
-            item_id = path.removeprefix("/api/image/")[:-4]
+        if ((path.startswith("/api/image/") or path.startswith("/images/hf/"))
+                and path.endswith(".jpg")):
+            prefix = "/api/image/" if path.startswith("/api/image/") else "/images/hf/"
+            item_id = path.removeprefix(prefix)[:-4]
             try:
                 payload, content_type = fetch_image(item_id)
             except Exception:

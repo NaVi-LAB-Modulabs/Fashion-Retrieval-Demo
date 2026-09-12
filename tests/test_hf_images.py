@@ -45,7 +45,7 @@ class ImageTests(unittest.TestCase):
         with patch.object(images, "_request_rows") as fetch, patch.object(images, "time", return_value=1000):
             result = images.resolve_images({"item_ids": ["a b", "second", "a b"]})
         fetch.assert_not_called()
-        self.assertEqual(result["images"]["a b"]["url"], "/api/image/a%20b.jpg")
+        self.assertEqual(result["images"]["a b"]["url"], "/images/hf/a%20b.jpg")
         self.assertEqual(result["images"]["second"]["expires_at"], 4600)
         self.assertEqual(result["missing_ids"], [])
 
@@ -67,7 +67,7 @@ class ImageTests(unittest.TestCase):
 
     def test_refresh_manifest_uses_boolean_cache_buster(self):
         result = images.resolve_images({"item_ids": ["a"], "refresh": True})
-        self.assertEqual(result["images"]["a"]["url"], "/api/image/a.jpg?refresh=true")
+        self.assertEqual(result["images"]["a"]["url"], "/images/hf/a.jpg?refresh=true")
 
     def test_missing_or_foreign_image_is_rejected(self):
         with patch.object(images, "_request_rows", return_value=[row("other")]):

@@ -109,7 +109,7 @@ property if present, otherwise `id`. Preserve the original ID, including its
 image suffix (for example, `51727804_0`).
 
 After rendering the search evidence, the browser sends IDs to `POST /api/images`
-and receives same-origin `/api/image/<item_ID>.jpg` proxy URLs. Each image request
+and receives same-origin `/images/hf/<item_ID>.jpg` proxy URLs. Each image request
 uses one equality predicate against the Dataset Viewer `/filter` endpoint, then
 the server returns the image bytes. At most four upstream requests run concurrently
 per server process, and successful bytes are cached in memory. No image files are

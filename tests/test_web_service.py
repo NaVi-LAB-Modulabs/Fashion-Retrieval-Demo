@@ -83,7 +83,7 @@ class RetrievalTests(unittest.TestCase):
         self.assertAlmostEqual(result["items"][0]["score"], (.6 + 1 + 1) / 3, places=6)
         self.assertEqual(result["items"][0]["score_components"], ["graph", "text", "style"])
         self.assertEqual(result["items"][1]["score_components"], ["graph"])
-        self.assertIsNone(result["items"][1]["image_url"])
+        self.assertEqual(result["items"][1]["image_url"], "/images/hf/missing-image.jpg")
 
     def test_huggingface_ids_are_returned_without_image_network_calls(self):
         result, _, _ = self.run_search([
@@ -91,7 +91,8 @@ class RetrievalTests(unittest.TestCase):
             {"id": "graph-id", "item_ID": "hf-id", "score": .7},
         ])
         self.assertEqual([item["image_id"] for item in result["items"]], ["51727804_0", "hf-id"])
-        self.assertTrue(all(item["image_url"] is None for item in result["items"]))
+        self.assertEqual([item["image_url"] for item in result["items"]],
+                         ["/images/hf/51727804_0.jpg", "/images/hf/hf-id.jpg"])
 
     def test_fashion200k_category_properties_supply_display_type(self):
         result, _, _ = self.run_search([
@@ -171,6 +172,13 @@ class PreviewHTTPTests(unittest.TestCase):
             with urlopen(self.base + "/api/image/90793401_0.jpg") as response:
                 self.assertEqual(response.read(), jpeg)
                 self.assertEqual(response.headers["Cache-Control"], "public, max-age=3600")
+        fetch.assert_called_once_with("90793401_0")
+
+    def test_preview_supports_cached_browser_image_route(self):
+        jpeg = b"\xff\xd8\xffpayload"
+        with patch("preview.fetch_image", return_value=(jpeg, "image/jpeg")) as fetch:
+            with urlopen(self.base + "/images/hf/90793401_0.jpg") as response:
+                self.assertEqual(response.read(), jpeg)
         fetch.assert_called_once_with("90793401_0")
 
     def test_no_file_traversal_or_secret_exposure(self):

@@ -109,7 +109,9 @@ def resolve_images(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "images": {
             item_id: {
-                "url": f"/api/image/{quote(item_id, safe='')}.jpg{suffix}",
+                # /images/ is accepted by both old and current browser bundles,
+                # so a cached app.js can still use the new one-item proxy.
+                "url": f"/images/hf/{quote(item_id, safe='')}.jpg{suffix}",
                 "expires_at": expires_at,
             }
             for item_id in item_ids
