@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 import unittest
 from unittest.mock import patch
+from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -40,6 +41,15 @@ class ImageTests(unittest.TestCase):
         self.assertNotIn("test-token", request.full_url)
         self.assertEqual(fetch.call_args.kwargs["timeout"], images.IMAGE_REQUEST_TIMEOUT_SECONDS)
         self.assertEqual(result, [row("a'b")])
+
+    def test_retryable_http_error_is_retried(self):
+        error = HTTPError(URL, 429, "Too Many Requests", {}, None)
+        response = io.BytesIO(json.dumps({"rows": [row("a")]}).encode())
+        with patch.object(images, "urlopen", side_effect=[error, response]) as fetch, patch.object(images, "sleep") as wait:
+            result = images._request_rows(["a"], images.image_source())
+        self.assertEqual(result, [row("a")])
+        self.assertEqual(fetch.call_count, 2)
+        wait.assert_called_once_with(images.HTTP_RETRY_DELAYS[0])
 
     def test_manifest_returns_same_origin_proxy_urls_without_hf_lookup(self):
         with patch.object(images, "_request_rows") as fetch, patch.object(images, "time", return_value=1000):

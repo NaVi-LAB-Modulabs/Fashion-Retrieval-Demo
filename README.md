@@ -112,7 +112,8 @@ After rendering the search evidence, the browser sends IDs to `POST /api/images`
 and receives same-origin `/images/hf/<item_ID>.jpg` proxy URLs. Each image request
 uses one equality predicate against the Dataset Viewer `/filter` endpoint, then
 the server returns the image bytes. At most four upstream requests run concurrently
-per server process, and successful bytes are cached in memory. No image files are
+per server process; the browser starts at most three image loads at once, and
+successful bytes are cached in memory. No image files are
 stored in the repository or database. Image requests do not change retrieval
 ranking or its measured stage timings.
 
@@ -131,6 +132,7 @@ missing IDs and failed images produce an image-unavailable placeholder while
 retaining all search results and evidence. Exported runs retain image IDs. Each
 upstream metadata or image request allows up to 30 seconds, matching the working
 Fashion200K metadata viewer behavior.
+Transient HTTP 429 and 5xx responses are retried twice with short delays.
 `preview.py` also loads the Hugging Face samples and supports image URL refresh. It needs internet access for images, but does not call OpenAI or Neo4j. Preview metadata is cached for at most 60 seconds; failures show an empty preview instead of switching to local samples.
 
 API reference: [filter predicates](https://huggingface.co/docs/dataset-viewer/filter)

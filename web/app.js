@@ -24,6 +24,9 @@ function notice(message = "", kind = "") {
 const imageCache = new Map();
 const imageRequests = new Map();
 const refreshQueue = new Set();
+const IMAGE_LOAD_CONCURRENCY = 3;
+const imageLoadQueue = [];
+let activeImageLoads = 0;
 let refreshTimer;
 
 function safeImageSource(value) {
@@ -41,7 +44,8 @@ function imageMarkup(item, className = "") {
   const src = safeImageSource(item.image_url);
   const remoteId = typeof item.image_id === "string" && item.image_id ? item.image_id : null;
   if (!src && !remoteId) return '<span class="image-missing">Image unavailable</span>';
-  return `<img class="${className}" src="${escapeHTML(src || "/assets/image-placeholder.svg")}"${remoteId ? ` data-image-id="${escapeHTML(remoteId)}"` : ""} alt="${escapeHTML(item.type_name || "Garment")} ${escapeHTML(item.id)}" loading="lazy" referrerpolicy="no-referrer">`;
+  const deferredProxy = remoteId && (src?.startsWith("/images/hf/") || src?.startsWith("/api/image/"));
+  return `<img class="${className}" src="${escapeHTML(deferredProxy || !src ? "/assets/image-placeholder.svg" : src)}"${remoteId ? ` data-image-id="${escapeHTML(remoteId)}"` : ""} alt="${escapeHTML(item.type_name || "Garment")} ${escapeHTML(item.id)}" loading="lazy" referrerpolicy="no-referrer">`;
 }
 
 async function resolveImageIds(ids, refresh = false) {
@@ -81,15 +85,38 @@ function missingImage(img) {
   img.replaceWith(fallback);
 }
 
+function drainImageLoadQueue() {
+  while (activeImageLoads < IMAGE_LOAD_CONCURRENCY && imageLoadQueue.length) {
+    const {img, url, done} = imageLoadQueue.shift();
+    if (!img.isConnected) { done(); continue; }
+    activeImageLoads += 1;
+    const finish = () => {
+      activeImageLoads -= 1;
+      done();
+      drainImageLoadQueue();
+    };
+    img.addEventListener("load", finish, {once: true});
+    img.addEventListener("error", finish, {once: true});
+    img.src = url;
+  }
+}
+
+function queueImageLoad(img, url) {
+  return new Promise((done) => {
+    imageLoadQueue.push({img, url, done});
+    drainImageLoadQueue();
+  });
+}
+
 async function loadRemoteImages(images, refresh = false) {
   if (!images.length) return;
   const resolved = await resolveImageIds(images.map((img) => img.dataset.imageId), refresh);
-  for (const img of images) {
-    if (!img.isConnected) continue;
+  await Promise.all(images.map((img) => {
+    if (!img.isConnected) return Promise.resolve();
     const url = resolved.get(img.dataset.imageId)?.url;
-    if (url) img.src = url;
-    else missingImage(img);
-  }
+    if (!url) { missingImage(img); return Promise.resolve(); }
+    return queueImageLoad(img, url);
+  }));
 }
 
 function handleImageErrors(container) {

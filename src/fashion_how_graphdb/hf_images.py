@@ -9,8 +9,9 @@ import math
 import os
 import re
 from threading import BoundedSemaphore, Lock
-from time import time
+from time import sleep, time
 from typing import Any
+from urllib.error import HTTPError
 from urllib.parse import parse_qs, quote, urlencode, urlsplit
 from urllib.request import Request, urlopen
 
@@ -24,6 +25,15 @@ _cache: OrderedDict[tuple[str, ...], tuple[bytes, str]] = OrderedDict()
 _cache_lock = Lock()
 _image_requests = BoundedSemaphore(4)
 _preview_cache: dict[tuple[str, ...], tuple[float, list[dict[str, Any]]]] = {}
+RETRYABLE_HTTP_STATUS = {429, 500, 502, 503, 504}
+HTTP_RETRY_DELAYS = (0.5, 1.5)
+
+
+class ImageProviderHTTPError(RuntimeError):
+    def __init__(self, stage: str, status: int) -> None:
+        super().__init__(f"Hugging Face {stage} request failed with HTTP {status}")
+        self.stage = stage
+        self.status = status
 
 
 def image_source() -> tuple[str, str, str, str]:
@@ -85,14 +95,25 @@ def _request_rows(item_ids: list[str], source: tuple[str, str, str, str]) -> lis
     return _fetch_rows(API_URL, params)
 
 
+def _read_response(request: Request, *, limit: int, stage: str) -> bytes:
+    for attempt in range(len(HTTP_RETRY_DELAYS) + 1):
+        try:
+            with urlopen(request, timeout=IMAGE_REQUEST_TIMEOUT_SECONDS) as response:
+                return response.read(limit + 1)
+        except HTTPError as exc:
+            if exc.code not in RETRYABLE_HTTP_STATUS or attempt == len(HTTP_RETRY_DELAYS):
+                raise ImageProviderHTTPError(stage, exc.code) from exc
+            sleep(HTTP_RETRY_DELAYS[attempt])
+    raise AssertionError("unreachable")
+
+
 def _fetch_rows(endpoint: str, params: dict[str, Any]) -> list[Any]:
     headers = {"Accept": "application/json", "User-Agent": "FashionSearch/1.0"}
     token = os.getenv("HF_TOKEN", "").strip()
     if token:
         headers["Authorization"] = f"Bearer {token}"
     request = Request(endpoint + "?" + urlencode(params), headers=headers)
-    with urlopen(request, timeout=IMAGE_REQUEST_TIMEOUT_SECONDS) as response:
-        raw = response.read(MAX_RESPONSE_BYTES + 1)
+    raw = _read_response(request, limit=MAX_RESPONSE_BYTES, stage="metadata")
     if len(raw) > MAX_RESPONSE_BYTES:
         raise ValueError("Image metadata response is too large.")
     payload = json.loads(raw)
@@ -165,8 +186,7 @@ def fetch_image(item_id: str, *, refresh: bool = False) -> tuple[bytes, str]:
             image_url,
             headers={"Accept": "image/*", "User-Agent": "FashionSearch/1.0"},
         )
-        with urlopen(request, timeout=IMAGE_REQUEST_TIMEOUT_SECONDS) as response:
-            payload = response.read(MAX_IMAGE_BYTES + 1)
+        payload = _read_response(request, limit=MAX_IMAGE_BYTES, stage="image")
         if len(payload) > MAX_IMAGE_BYTES:
             raise ValueError("Image response is too large.")
         result = (payload, _image_content_type(payload))

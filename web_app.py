@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from fashion_how_graphdb.web_service import (
     catalog_preview, configuration, image_index, retrieve, validate_request,
 )
-from fashion_how_graphdb.hf_images import fetch_image, resolve_images
+from fashion_how_graphdb.hf_images import ImageProviderHTTPError, fetch_image, resolve_images
 from fashion_how_graphdb.diagnostics import failure_details
 
 app = FastAPI(title="Fashion Search API", version="1.0.0")
@@ -102,6 +102,12 @@ def hf_image(item_id: str, refresh: bool = False) -> Response:
     except TimeoutError as exc:
         logging.getLogger(__name__).warning("HF image proxy timed out item_id=%s", item_id)
         raise HTTPException(504, "Image provider timed out") from exc
+    except ImageProviderHTTPError as exc:
+        logging.getLogger(__name__).warning(
+            "HF image proxy failed item_id=%r stage=%s status=%s",
+            item_id, exc.stage, exc.status,
+        )
+        raise HTTPException(502, "Image provider request failed") from exc
     except ValueError as exc:
         logging.getLogger(__name__).warning(
             "HF image proxy rejected item_id=%r reason=%s", item_id, str(exc)
