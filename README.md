@@ -21,7 +21,8 @@ or frontend build is required. The application entrypoint is `web_app.py`.
 
 Features include responsive image cards, an optional ranking table, natural
 language examples, parser/threshold controls, extracted and excluded constraints,
-style-axis targets, per-item score breakdowns and mapped attributes, the final
+style-axis targets, a collapsed scoring-weight control, per-item score breakdowns
+and mapped attributes, the final
 candidate Cypher with redacted embedding parameters, measured stage timings, and
 downloadable JSON search runs.
 The initial gallery is explicitly an **unranked catalog preview**, with no invented
@@ -152,6 +153,11 @@ Final scoring combines description
 similarity (55%), matching graph edges (35%), and mentioned style axes (10%);
 weights are normalized across available components. Color, pattern and category
 attributes carry full graph weight; materials and seasons are weaker signals.
+The web settings expose description, graph-attribute, and style weights under
+**Scoring weights**. Their default relative values are 55:35:10. The UI shows
+the effective split as values change; each search sends its chosen weights to
+the API. At least one weight must be above zero, and unavailable or zero-weight
+score components are omitted before the remaining weights are normalized.
 
 ## Neo4j Item Properties
 

@@ -3,9 +3,32 @@
 const $ = (id) => document.getElementById(id);
 const escapeHTML = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"}[c]));
 const score = (value) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(3) : "N/A";
+const componentScore = (item, name) => item.score_components?.includes(name) ? score(item[`${name}_score`]) : "N/A";
 const percentage = (value) => typeof value === "number" && Number.isFinite(value) ? Math.min(100, Math.max(0, value * 100)) : 0;
 const label = (value) => String(value || "").replaceAll("_", " ");
 const state = { config: null, preview: [], run: null, view: "grid", busy: false, lastAttemptFailed: false };
+const weightControls = { text: "weight-text", graph: "weight-graph", style: "weight-style" };
+let defaultWeightPoints = { text: 55, graph: 35, style: 10 };
+
+function selectedWeights() {
+  return Object.fromEntries(Object.entries(weightControls).map(([name, id]) => [name, Number($(id).value) / 100]));
+}
+
+function effectiveWeightLabel(weights) {
+  const total = Object.values(weights).reduce((sum, value) => sum + value, 0);
+  if (total <= 0) return "Set at least one weight above zero.";
+  const percentageOf = (name) => `${Math.round(weights[name] / total * 1000) / 10}%`;
+  return `Description ${percentageOf("text")} · Attributes ${percentageOf("graph")} · Style ${percentageOf("style")}`;
+}
+
+function updateWeightControls() {
+  for (const [name, id] of Object.entries(weightControls)) $(`${id}-value`).value = $(id).value;
+  const weights = selectedWeights();
+  $("weight-summary").textContent = Object.values(weightControls).map((id) => $(id).value).join(" : ");
+  $("weight-effective").textContent = Object.values(weights).some((value) => value > 0)
+    ? `Effective split: ${effectiveWeightLabel(weights)}.` : effectiveWeightLabel(weights);
+  $("weight-effective").classList.toggle("weight-invalid", Object.values(weights).every((value) => value === 0));
+}
 
 async function api(path, options = {}) {
   const response = await fetch(path, { ...options, signal: options.signal || AbortSignal.timeout(15000) });
@@ -60,11 +83,11 @@ function renderItems() {
       <span class="card-image">${ranked ? `<span class="card-index">${String(index + 1).padStart(2, "0")}</span>` : ""}${imageMarkup(item)}<span class="card-arrow" aria-hidden="true">↗</span></span>
       <span class="card-title"><span>${escapeHTML(item.type_name || item.type_code || "Garment")}</span><span class="card-id">${escapeHTML(item.id)}</span></span>
       <span class="card-subtitle">${ranked ? escapeHTML(matches || "Inspect ranking details") : "Not ranked"}</span>
-      ${ranked ? `<span class="card-score"><span class="score-track" aria-hidden="true"><span style="width:${percentage(item.score)}%"></span></span><strong>${score(item.score)}</strong><span class="muted">final</span></span><span class="card-components"><span>G ${item.score_components?.includes("graph") ? score(item.graph_score) : "N/A"}</span><span>T ${score(item.text_score)}</span><span>S ${score(item.style_score)}</span></span>` : ""}
+      ${ranked ? `<span class="card-score"><span class="score-track" aria-hidden="true"><span style="width:${percentage(item.score)}%"></span></span><strong>${score(item.score)}</strong><span class="muted">final</span></span><span class="card-components"><span>G ${componentScore(item, "graph")}</span><span>T ${componentScore(item, "text")}</span><span>S ${componentScore(item, "style")}</span></span>` : ""}
     </button>`;
   }).join("");
   handleImageErrors($("results-grid"));
-  $("ranking-table").innerHTML = `<table><caption class="sr-only">${ranked ? "Retrieval scores; N/A means unavailable or inactive" : "Unranked catalog preview"}</caption><thead><tr>${ranked ? '<th scope="col">Rank</th>' : ""}<th scope="col">Item</th><th scope="col">Type</th>${ranked ? '<th scope="col">Final</th><th scope="col">Graph</th><th scope="col">Semantic</th><th scope="col">Style</th>' : ""}</tr></thead><tbody>${items.map((item, index) => `<tr>${ranked ? `<td>${index + 1}</td>` : ""}<td><button type="button" data-item="${index}" aria-label="Inspect ${escapeHTML(item.id)}">${escapeHTML(item.id)}</button></td><td>${escapeHTML(item.type_name || item.type_code || "Garment")}</td>${ranked ? `<td><strong>${score(item.score)}</strong></td><td>${item.score_components?.includes("graph") ? score(item.graph_score) : "N/A"}</td><td>${score(item.text_score)}</td><td>${score(item.style_score)}</td>` : ""}</tr>`).join("")}</tbody></table>`;
+  $("ranking-table").innerHTML = `<table><caption class="sr-only">${ranked ? "Retrieval scores; N/A means unavailable or inactive" : "Unranked catalog preview"}</caption><thead><tr>${ranked ? '<th scope="col">Rank</th>' : ""}<th scope="col">Item</th><th scope="col">Type</th>${ranked ? '<th scope="col">Final</th><th scope="col">Graph</th><th scope="col">Semantic</th><th scope="col">Style</th>' : ""}</tr></thead><tbody>${items.map((item, index) => `<tr>${ranked ? `<td>${index + 1}</td>` : ""}<td><button type="button" data-item="${index}" aria-label="Inspect ${escapeHTML(item.id)}">${escapeHTML(item.id)}</button></td><td>${escapeHTML(item.type_name || item.type_code || "Garment")}</td>${ranked ? `<td><strong>${score(item.score)}</strong></td><td>${componentScore(item, "graph")}</td><td>${componentScore(item, "text")}</td><td>${componentScore(item, "style")}</td>` : ""}</tr>`).join("")}</tbody></table>`;
   $("empty-state").hidden = items.length > 0;
   $("empty-state").querySelector("h3").textContent = !ranked && !items.length ? "No preview images" : "No matching items";
   $("empty-state").querySelector("p").textContent = !ranked && !items.length
@@ -156,7 +179,7 @@ function renderInsights() {
   $("parameter-list").innerHTML = `<dl>${Object.entries(run.params).map(([key, value]) => `<div class="parameter-row"><dt>$${escapeHTML(key)}</dt><dd>${escapeHTML(JSON.stringify(value))}</dd></div>`).join("")}</dl>`;
   $("extraction-code").textContent = JSON.stringify(extracted, null, 2);
   const settings = run.settings;
-  $("run-summary").textContent = `Parser: ${settings.model} · Results: ${settings.limit} · Min. score: ${settings.min_score ?? "off"} · Min. edge confidence: ${settings.min_confidence ?? "off"}. ${run.reranked ? "Weighted reranking applied." : "Graph ranking only."}`;
+  $("run-summary").textContent = `Parser: ${settings.model} · Results: ${settings.limit} · Min. score: ${settings.min_score ?? "off"} · Min. edge confidence: ${settings.min_confidence ?? "off"} · Weights: ${effectiveWeightLabel(settings.weights || {text: .55, graph: .35, style: .10})}. ${run.reranked ? "Weighted reranking applied." : "Graph ranking only."}`;
   $("run-state").textContent = state.lastAttemptFailed ? "Previous run" : "Completed";
   $("parse-time").textContent = `${run.timings.parse_ms} ms`;
   $("graph-time").textContent = `${run.timings.graph_ms} ms`;
@@ -176,8 +199,9 @@ function openItem(index) {
   const ranked = Boolean(state.run);
   const components = item.score_components || [];
   const rows = [["Final", item.score, true], ["Graph", item.graph_score, components.includes("graph")], ["Semantic", item.text_score, components.includes("text")], ["Style", item.style_score, components.includes("style")]];
+  const appliedWeights = ranked ? effectiveWeightLabel(state.run.settings.weights || {text: .55, graph: .35, style: .10}) : "";
   $("item-dialog-content").innerHTML = `<div class="dialog-layout"><div>${imageMarkup(item, "dialog-image")}</div><div class="dialog-copy"><p class="eyebrow">${ranked ? `RANK ${String(index + 1).padStart(2, "0")} / MATCH EVIDENCE` : "CATALOG PREVIEW"}</p><h2 id="item-dialog-title">${escapeHTML(item.type_name || item.type_code || "Garment")}</h2><p>${escapeHTML(item.id)}</p>
-    ${ranked ? `<div class="score-breakdown">${rows.map(([name, value, active]) => `<div class="score-row${active ? "" : " inactive"}"><span>${name}</span><span class="score-bar" aria-hidden="true"><span style="width:${active ? percentage(value) : 0}%"></span></span><strong>${active ? score(value) : "N/A"}</strong></div>`).join("")}</div><p class="dialog-note">Final uses available component weights: semantic 55%, graph 35%, style 10% when requested. N/A means unavailable or inactive. Scores are not probabilities.</p>
+    ${ranked ? `<div class="score-breakdown">${rows.map(([name, value, active]) => `<div class="score-row${active ? "" : " inactive"}"><span>${name}</span><span class="score-bar" aria-hidden="true"><span style="width:${active ? percentage(value) : 0}%"></span></span><strong>${active ? score(value) : "N/A"}</strong></div>`).join("")}</div><p class="dialog-note">Configured weights: ${escapeHTML(appliedWeights)}. Available components are normalized for this item. N/A means unavailable or zero weight. Scores are not probabilities.</p>
       <h3>Matched graph attributes</h3>${item.matched_filters?.length ? attributeList(item.matched_filters) : '<p class="muted">No scored attribute matches for this query.</p>'}
       ${item.style_axis_matches?.length ? `<h3>Style-axis evidence</h3>${item.style_axis_matches.map((t) => axisMarkup(t, t.value)).join("")}` : ""}
       ${item.mapped_attributes?.length ? `<h3>All mapped attributes</h3>${attributeList(item.mapped_attributes)}` : ""}`
@@ -192,7 +216,7 @@ function setBusy(busy) {
   $("search-button").disabled = busy;
   $("search-button-text").textContent = busy ? "Running..." : "Run retrieval";
   $("results-section").setAttribute("aria-busy", String(busy));
-  document.querySelectorAll("#search-form input, #search-form select, [data-query], .view-switch button").forEach((el) => { el.disabled = busy; });
+  document.querySelectorAll("#search-form input, #search-form select, #reset-weights, [data-query], .view-switch button").forEach((el) => { el.disabled = busy; });
   if (busy) {
     resetEvidence(true);
     $("results-grid").hidden = false;
@@ -212,13 +236,23 @@ $("search-form").addEventListener("submit", async (event) => {
   if (state.busy) return;
   const query = $("query").value.trim();
   if (!query) { notice("Describe the fashion items you are looking for.", "error"); $("query").focus(); return; }
+  const weights = selectedWeights();
+  if (Object.values(weights).every((value) => value === 0)) {
+    $("settings").hidden = false;
+    $("settings-toggle").setAttribute("aria-expanded", "true");
+    $("settings-toggle").textContent = "Hide settings";
+    $("weight-settings").open = true;
+    notice("Set at least one scoring weight above zero.", "error");
+    $("weight-text").focus();
+    return;
+  }
   if (!state.config?.ready) {
     notice(state.config?.preview
       ? "You’re viewing the catalog preview. Start the live web server with configured OpenAI and Neo4j credentials to run a search."
       : "Live search is not ready. Check the server’s OpenAI and Neo4j configuration, then reload the page.", "error");
     return;
   }
-  const payload = {query, model: $("model").value.trim(), limit: Number($("limit").value), min_score: Number($("min-score").value), min_confidence: Number($("min-confidence").value)};
+  const payload = {query, model: $("model").value.trim(), limit: Number($("limit").value), min_score: Number($("min-score").value), min_confidence: Number($("min-confidence").value), weights};
   state.lastAttemptFailed = false;
   const started = Date.now();
   setBusy(true);
@@ -256,6 +290,12 @@ $("settings-toggle").addEventListener("click", () => {
   $("settings-toggle").textContent = $("settings").hidden ? "Show settings" : "Hide settings";
 });
 for (const name of ["min-score", "min-confidence"]) $(name).addEventListener("input", () => { $(`${name}-value`).value = Number($(name).value).toFixed(2); });
+for (const id of Object.values(weightControls)) $(id).addEventListener("input", updateWeightControls);
+$("reset-weights").addEventListener("click", () => {
+  for (const [name, id] of Object.entries(weightControls)) $(id).value = defaultWeightPoints[name];
+  updateWeightControls();
+});
+updateWeightControls();
 for (const mode of ["grid", "table"]) $(`${mode}-view`).addEventListener("click", () => { state.view = mode; applyView(); });
 for (const id of ["results-grid", "ranking-table"]) $(id).addEventListener("click", (event) => {
   const button = event.target.closest("[data-item]");
@@ -311,6 +351,11 @@ async function init() {
   if (results[0].status === "fulfilled") {
     state.config = results[0].value;
     $("model").value = state.config.default_model;
+    if (state.config.default_weights) {
+      defaultWeightPoints = Object.fromEntries(Object.keys(weightControls).map((name) => [name, Math.round(state.config.default_weights[name] * 100)]));
+      for (const [name, id] of Object.entries(weightControls)) $(id).value = defaultWeightPoints[name];
+      updateWeightControls();
+    }
     $("model-options").innerHTML = state.config.models.map((model) => `<option value="${escapeHTML(model)}"></option>`).join("");
     $("runtime-label").innerHTML = '<span class="status-dot"></span>' + (state.config.ready ? " Live search configured" : state.config.preview ? " Catalog preview · Search offline" : " Catalog preview · Search not configured");
   } else {

@@ -8,7 +8,7 @@
   <title>Fashion Search | Retrieval workspace</title>
   <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/assets/styles.css">
-  <script src="/assets/app.js?v=20260927-local-images" defer></script>
+  <script src="/assets/app.js?v=20260927-score-weights" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#query">Skip to query</a>
@@ -28,6 +28,16 @@
           <label>Maximum results<select id="limit"><option value="6">6</option><option value="12" selected>12</option><option value="24">24</option><option value="50">50</option></select></label>
           <label>Min. final score <output for="min-score" id="min-score-value">0.00</output><input type="range" id="min-score" min="0" max="1" step="0.05" value="0"></label>
           <label>Min. edge confidence <output for="min-confidence" id="min-confidence-value">0.00</output><input type="range" id="min-confidence" min="0" max="1" step="0.05" value="0"></label>
+          <details class="weight-settings" id="weight-settings">
+            <summary>Scoring weights <span id="weight-summary">55 : 35 : 10</span></summary>
+            <div class="weight-controls">
+              <label for="weight-text">Description similarity <output for="weight-text" id="weight-text-value">55</output><input type="range" id="weight-text" min="0" max="100" step="1" value="55"></label>
+              <label for="weight-graph">Attribute score <output for="weight-graph" id="weight-graph-value">35</output><input type="range" id="weight-graph" min="0" max="100" step="1" value="35"></label>
+              <label for="weight-style">Style score <output for="weight-style" id="weight-style-value">10</output><input type="range" id="weight-style" min="0" max="100" step="1" value="10"></label>
+            </div>
+            <div class="weight-help"><span id="weight-effective">Effective split: description 55%, attributes 35%, style 10%.</span><button type="button" id="reset-weights">Reset to defaults</button></div>
+            <p>Weights are relative. Available score components are normalized for each item.</p>
+          </details>
           <p>Settings apply to the next run. Edge confidence sets the minimum for matched attribute edges; final score filters ranked results.</p>
         </div>
       </form>
@@ -76,7 +86,7 @@ Run retrieval to inspect the final candidate query here.</code></pre>
 
   <dialog id="item-dialog" aria-labelledby="item-dialog-title"><button type="button" class="dialog-close" aria-label="Close item details" data-close-dialog>×</button><div id="item-dialog-content"></div></dialog>
   <dialog id="cypher-dialog" aria-labelledby="expanded-query-title"><button type="button" class="dialog-close" aria-label="Close expanded query" data-close-dialog>×</button><h2 id="expanded-query-title">Final candidate query</h2><p class="panel-description">The candidate evidence query from the selected run.</p><pre tabindex="0" aria-label="Final candidate Cypher"><code id="expanded-cypher-code"></code></pre></dialog>
-  <dialog id="method-dialog" aria-labelledby="method-title"><button type="button" class="dialog-close" aria-label="Close methodology" data-close-dialog>×</button><p class="eyebrow">METHOD REFERENCE</p><h2 id="method-title">Retrieval &amp; scoring</h2><ol class="method-list"><li><h3>Parse the query</h3><p>An LLM extracts garment categories, positive and excluded attributes, directly named attributes, a positive visual description, and requested style targets.</p></li><li><h3>Select candidates</h3><p>The existing description vector index and required attribute edges supply separate candidate pools. A named category limits both pools. Candidate IDs are combined before fetching graph evidence.</p></li><li><h3>Filter and rank</h3><p>Directly named attributes, such as white in “white jacket”, require a matching graph edge and are the only attributes used in the graph score. Excluded attributes remove matching items. Inferred attributes are not used for graph candidate selection or scoring. Matching edges must meet the chosen confidence threshold. The final score is a weighted mean of available description similarity (55%), graph attribute match (35%), and requested style axes (10%).</p></li></ol><div class="method-note">Unavailable components are omitted and remaining weights are normalized. Candidate counts refer to fetched candidates before final filtering. Scores are retrieval signals, not probabilities.</div></dialog>
+  <dialog id="method-dialog" aria-labelledby="method-title"><button type="button" class="dialog-close" aria-label="Close methodology" data-close-dialog>×</button><p class="eyebrow">METHOD REFERENCE</p><h2 id="method-title">Retrieval &amp; scoring</h2><ol class="method-list"><li><h3>Parse the query</h3><p>An LLM extracts garment categories, positive and excluded attributes, directly named attributes, a positive visual description, and requested style targets.</p></li><li><h3>Select candidates</h3><p>The existing description vector index and required attribute edges supply separate candidate pools. A named category limits both pools. Candidate IDs are combined before fetching graph evidence.</p></li><li><h3>Filter and rank</h3><p>Directly named attributes, such as white in “white jacket”, require a matching graph edge and are the only attributes used in the graph score. Excluded attributes remove matching items. Inferred attributes are not used for graph candidate selection or scoring. Matching edges must meet the chosen confidence threshold. The final score uses adjustable relative weights for description similarity, graph attributes, and requested style axes; defaults are 55:35:10.</p></li></ol><div class="method-note">Unavailable or zero-weight components are omitted and remaining weights are normalized. Candidate counts refer to fetched candidates before final filtering. Scores are retrieval signals, not probabilities.</div></dialog>
   <noscript><p class="notice">Enable JavaScript to inspect results and run queries.</p></noscript>
 </body>
 </html>

@@ -14,6 +14,7 @@ ATTRIBUTE_POOL_SIZE = 150
 TEXT_WEIGHT = 0.55
 ATTRIBUTE_WEIGHT = 0.35
 STYLE_WEIGHT = 0.10
+DEFAULT_WEIGHTS = {"text": TEXT_WEIGHT, "graph": ATTRIBUTE_WEIGHT, "style": STYLE_WEIGHT}
 
 VECTOR_CYPHER = """
 CALL db.index.vector.queryNodes($index_name, $pool_size, $query_embedding)
@@ -286,7 +287,9 @@ def rerank(
     limit: int,
     min_confidence: float | None,
     min_score: float | None,
+    weights: dict[str, float] | None = None,
 ) -> list[dict[str, Any]]:
+    selected_weights = DEFAULT_WEIGHTS if weights is None else weights
     ranked = []
     for raw_item in results:
         item = dict(raw_item)
@@ -299,11 +302,12 @@ def rerank(
             item, extraction.get("style_axis_targets") or []
         )
         components = [
-            (ATTRIBUTE_WEIGHT, graph),
-            (TEXT_WEIGHT, text),
-            (STYLE_WEIGHT, style),
+            (selected_weights["graph"], graph),
+            (selected_weights["text"], text),
+            (selected_weights["style"], style),
         ]
-        active = [(weight, score) for weight, score in components if score is not None]
+        active = [(weight, score) for weight, score in components
+                  if weight > 0 and score is not None]
         final = (
             sum(weight * score for weight, score in active) /
             sum(weight for weight, _ in active)
@@ -317,9 +321,11 @@ def rerank(
         item["matched_filters"] = matched_filters
         item["style_axis_matches"] = style_matches
         item["score_components"] = [
-            name for name, score in (
-                ("graph", graph), ("text", text), ("style", style)
-            ) if score is not None
+            name for name, weight, score in (
+                ("graph", selected_weights["graph"], graph),
+                ("text", selected_weights["text"], text),
+                ("style", selected_weights["style"], style),
+            ) if weight > 0 and score is not None
         ]
         item["score"] = round(final, 6)
         ranked.append(item)

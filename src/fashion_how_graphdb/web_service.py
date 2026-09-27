@@ -73,6 +73,7 @@ def configuration(*, preview: bool = False) -> dict[str, Any]:
         "style_axis_count": len(catalog["style_axes"]),
         "type_names": CATEGORY_NAMES,
         "style_axes": search.STYLE_AXES,
+        "default_weights": hybrid_search.DEFAULT_WEIGHTS,
     }
 
 
@@ -128,6 +129,16 @@ def validate_request(payload: dict[str, Any]) -> dict[str, Any]:
         ):
             raise ValueError("Score and edge confidence must be between 0 and 1.")
         values[name] = value
+    weights = payload.get("weights", hybrid_search.DEFAULT_WEIGHTS)
+    if not isinstance(weights, dict) or set(weights) != set(hybrid_search.DEFAULT_WEIGHTS):
+        raise ValueError("Provide text, graph, and style weights.")
+    if any(
+        isinstance(weight, bool) or not isinstance(weight, (int, float))
+        or not math.isfinite(weight) or not 0 <= weight <= 1
+        for weight in weights.values()
+    ) or not any(weight > 0 for weight in weights.values()):
+        raise ValueError("Weights must be between 0 and 1, with at least one above zero.")
+    values["weights"] = {name: float(weights[name]) for name in hybrid_search.DEFAULT_WEIGHTS}
     return values
 
 
@@ -162,6 +173,7 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
         items = hybrid_search.rerank(
             raw_results, extraction, limit=request["limit"],
             min_confidence=request["min_confidence"], min_score=request["min_score"],
+            weights=request["weights"],
         )
     params = {
         "candidate_ids": candidate_ids,
@@ -171,6 +183,7 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
         "query_embedding": f"<{len(embedding)} dimensions; omitted from response>",
         "min_confidence": request["min_confidence"],
         "min_score": request["min_score"],
+        "weights": request["weights"],
     }
     # Only expose fields needed to explain retrieval; never serialize arbitrary DB properties.
     fields = ("id", "category", "category_name", "type_code", "type_name", "score", "graph_score", "text_score",

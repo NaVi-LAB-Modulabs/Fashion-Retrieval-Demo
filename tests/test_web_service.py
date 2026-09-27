@@ -95,6 +95,25 @@ class RetrievalTests(unittest.TestCase):
         self.assertAlmostEqual(result["items"][0]["score"], .35 * .6 + .55 + .1, places=6)
         self.assertEqual(result["items"][0]["score_components"], ["graph", "text", "style"])
 
+    def test_search_weights_change_order_and_zero_weight_disables_component(self):
+        rows = [
+            {"id": "text-first", "text_score": .95,
+             "mapped_attributes": [{"scope": "common", "group": "colors", "value": "blue",
+                                    "confidence": .2}]},
+            {"id": "graph-first", "text_score": .55,
+             "mapped_attributes": [{"scope": "common", "group": "colors", "value": "blue",
+                                    "confidence": .9}]},
+        ]
+        default, _, _ = self.run_search(rows)
+        custom, _, _ = self.run_search(rows, weights={"text": .9, "graph": .1, "style": 0})
+        self.assertEqual(default["items"][0]["id"], "graph-first")
+        self.assertEqual(custom["items"][0]["id"], "text-first")
+        self.assertEqual(custom["settings"]["weights"], {"text": .9, "graph": .1, "style": 0.0})
+        self.assertEqual(custom["params"]["weights"], custom["settings"]["weights"])
+        text_only, _, _ = self.run_search(rows, weights={"text": 1, "graph": 0, "style": 0})
+        self.assertEqual(text_only["items"][0]["score_components"], ["text"])
+        self.assertEqual(text_only["items"][0]["score"], .95)
+
     def test_only_saved_sample_ids_have_image_urls(self):
         self.extraction["common_filters"] = []
         result, _, _ = self.run_search([
@@ -130,6 +149,11 @@ class RetrievalTests(unittest.TestCase):
             {"query": "blue", "min_score": float("nan")},
             {"query": "blue", "min_confidence": -1},
             {"query": "blue", "min_score": "0.5"},
+            {"query": "blue", "weights": {"text": 0, "graph": 0, "style": 0}},
+            {"query": "blue", "weights": {"text": 1, "graph": 0}},
+            {"query": "blue", "weights": {"text": 1, "graph": 0, "style": float("nan")}},
+            {"query": "blue", "weights": {"text": True, "graph": 0, "style": 0}},
+            {"query": "blue", "weights": {"text": 1, "graph": 0, "style": 0, "other": 0}},
         ]
         with patch.object(service, "openai_client") as client:
             for payload in bad:
@@ -181,7 +205,7 @@ class PreviewHTTPTests(unittest.TestCase):
                 self.assertEqual(response.status, 200)
                 self.assertTrue(response.read())
         with urlopen(self.base + "/") as response:
-            self.assertIn(b"/assets/app.js?v=20260927-local-images", response.read())
+            self.assertIn(b"/assets/app.js?v=20260927-score-weights", response.read())
         with urlopen(self.base + "/api/config") as response:
             self.assertFalse(json.load(response)["ready"])
 
