@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import math
+import json
+import re
 import os
 from functools import lru_cache
 from pathlib import Path
@@ -20,21 +22,42 @@ from .taxonomy import CATEGORY_NAMES
 from .llm import default_model
 
 ROOT = Path(__file__).resolve().parents[2]
-IMAGE_DIR = ROOT / "fashion-how" / "image"
+IMAGE_DIR = ROOT / "sample_images"
+SAMPLE_IDS_FILE = ROOT / "sample_ids.json"
+
+
+@lru_cache(maxsize=1)
+def sample_ids() -> dict[str, list[str]]:
+    data = json.loads(SAMPLE_IDS_FILE.read_text(encoding="utf-8"))
+    samples = data["samples"]
+    if not isinstance(samples, dict) or any(
+        not isinstance(category, str) or not isinstance(ids, list)
+        or any(not isinstance(item_id, str) or not re.fullmatch(r"[0-9]+_0", item_id) for item_id in ids)
+        for category, ids in samples.items()
+    ):
+        raise ValueError("Invalid sample_ids.json")
+    return samples
 
 
 @lru_cache(maxsize=1)
 def image_index() -> dict[str, Path]:
+    allowed = {item_id for ids in sample_ids().values() for item_id in ids}
     return {
         path.name: path for path in sorted(IMAGE_DIR.rglob("*"))
         if path.is_file() and path.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}
+        and path.stem in allowed
         and path.resolve().is_relative_to(IMAGE_DIR.resolve())
     }
 
 
-def image_url(filename: Any) -> str | None:
-    name = str(filename or "").replace("\\", "/").rsplit("/", 1)[-1]
-    return f"/images/{quote(name)}" if name in image_index() else None
+def image_url(item_id: Any) -> str | None:
+    if not isinstance(item_id, str):
+        return None
+    for extension in (".jpg", ".jpeg", ".png", ".webp"):
+        name = item_id + extension
+        if name in image_index():
+            return f"/images/{quote(name)}"
+    return None
 
 
 def configuration(*, preview: bool = False) -> dict[str, Any]:
@@ -54,8 +77,19 @@ def configuration(*, preview: bool = False) -> dict[str, Any]:
 
 
 def catalog_preview() -> dict[str, Any]:
-    from .hf_images import sample_catalog
-    return sample_catalog()
+    items = []
+    for category, ids in sample_ids().items():
+        for item_id in ids:
+            url = image_url(item_id)
+            if url:
+                items.append({"id": item_id, "image_id": item_id,
+                              "image_url": url, "type_name": category})
+            if len(items) == 12:
+                break
+        if len(items) == 12:
+            break
+    return {"items": items, "source": "local", "ranked": False,
+            "status": "ok" if items else "unavailable"}
 
 
 @lru_cache(maxsize=1)
@@ -133,12 +167,10 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
     results = []
     for rank, item in enumerate(items, 1):
         public = {key: item.get(key) for key in fields}
-        local_url = image_url(item.get("image_file"))
         item_id = item.get("item_ID") or item.get("id")
-        remote_id = str(item_id) if item_id is not None and not local_url else None
-        remote_url = f"/images/hf/{quote(remote_id, safe='')}.jpg" if remote_id else None
+        image_id = str(item_id) if item_id is not None else None
         public["id"] = item.get("id") or item_id
-        public.update(rank=rank, image_url=local_url or remote_url, image_id=remote_id)
+        public.update(rank=rank, image_url=image_url(image_id), image_id=image_id)
         public["type_code"] = item.get("category") or item.get("type_code")
         public["type_name"] = item.get("category_name") or item.get("type_name") or CATEGORY_NAMES.get(public["type_code"], "Garment")
         results.append(public)

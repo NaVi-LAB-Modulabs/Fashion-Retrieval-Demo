@@ -13,12 +13,11 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fashion_how_graphdb.web_service import (
     catalog_preview, configuration, image_index, retrieve, validate_request,
 )
-from fashion_how_graphdb.hf_images import ImageProviderHTTPError, fetch_image, resolve_images
 from fashion_how_graphdb.diagnostics import failure_details
 
 app = FastAPI(title="Fashion Search API", version="1.0.0")
@@ -29,7 +28,7 @@ async def response_headers(request: Request, call_next: Any) -> Any:
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "same-origin"
-    if request.url.path.startswith("/api/") and not request.url.path.startswith("/api/image/"):
+    if request.url.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -57,11 +56,6 @@ def image(filename: str) -> FileResponse:
     return FileResponse(path, headers={"Cache-Control": "public, max-age=86400"})
 
 
-@app.get("/images/hf/{item_id}.jpg", include_in_schema=False)
-def hf_image_compatible(item_id: str, refresh: bool = False) -> Response:
-    return hf_image(item_id, refresh)
-
-
 @app.post("/api/search")
 def search(payload: dict[str, Any]) -> Any:
     try:
@@ -82,44 +76,6 @@ def search(payload: dict[str, Any]) -> Any:
             "error_id": error_id,
             "stage": details["stage"],
         })
-
-
-@app.post("/api/images")
-def images(payload: dict[str, Any]) -> dict[str, Any]:
-    try:
-        return resolve_images(payload)
-    except ValueError as exc:
-        raise HTTPException(422, str(exc)) from exc
-
-
-@app.get("/api/image/{item_id}.jpg", include_in_schema=False)
-def hf_image(item_id: str, refresh: bool = False) -> Response:
-    try:
-        payload, content_type = fetch_image(item_id, refresh=refresh)
-    except KeyError as exc:
-        logging.getLogger(__name__).warning("HF image not found item_id=%r", item_id)
-        raise HTTPException(404, "Image not found") from exc
-    except TimeoutError as exc:
-        logging.getLogger(__name__).warning("HF image proxy timed out item_id=%s", item_id)
-        raise HTTPException(504, "Image provider timed out") from exc
-    except ImageProviderHTTPError as exc:
-        logging.getLogger(__name__).warning(
-            "HF image proxy failed item_id=%r stage=%s status=%s",
-            item_id, exc.stage, exc.status,
-        )
-        raise HTTPException(502, "Image provider request failed") from exc
-    except ValueError as exc:
-        logging.getLogger(__name__).warning(
-            "HF image proxy rejected item_id=%r reason=%s", item_id, str(exc)
-        )
-        raise HTTPException(422, str(exc)) from exc
-    except Exception as exc:
-        logging.getLogger(__name__).warning(
-            "HF image proxy unavailable item_id=%s type=%s", item_id, type(exc).__name__
-        )
-        raise HTTPException(502, "Image provider unavailable") from exc
-    return Response(payload, media_type=content_type,
-                    headers={"Cache-Control": "public, max-age=3600"})
 
 
 app.mount("/assets", StaticFiles(directory=ROOT / "web"), name="assets")

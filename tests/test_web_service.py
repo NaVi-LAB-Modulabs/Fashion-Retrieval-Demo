@@ -5,6 +5,7 @@ from http.server import ThreadingHTTPServer
 import json
 from pathlib import Path
 import sys
+from tempfile import TemporaryDirectory
 from threading import Thread
 from types import SimpleNamespace
 import unittest
@@ -46,10 +47,10 @@ class RetrievalTests(unittest.TestCase):
             result = service.retrieve({"query": "a blue blouse", **settings})
         return result, session, client
 
-    @patch.object(service, "image_index", return_value={"BL-001.jpg": Path("BL-001.jpg")})
+    @patch.object(service, "image_index", return_value={"51727804_0.jpg": Path("51727804_0.jpg")})
     def test_graph_results_keep_evidence_and_hide_unknown_properties(self, image_index):
         result, session, client = self.run_search([
-            {"id": "BL-001", "type_code": "BL", "image_file": "BL-001.jpg", "score": .8,
+            {"id": "51727804_0", "type_code": "BL", "score": .8,
              "description_embedding": [1, 2, 3], "internal_note": "private",
              "matched_filters": [{"group": "colors", "value": "blue", "score": .8}]},
         ], limit=6, min_confidence=.5, min_score=.4)
@@ -59,8 +60,8 @@ class RetrievalTests(unittest.TestCase):
         self.assertEqual(item["score_components"], ["graph"])
         self.assertNotIn("description_embedding", item)
         self.assertNotIn("internal_note", item)
-        self.assertEqual(item["image_url"], "/images/BL-001.jpg")
-        self.assertIsNone(item["image_id"])
+        self.assertEqual(item["image_url"], "/images/51727804_0.jpg")
+        self.assertEqual(item["image_id"], "51727804_0")
         self.assertEqual(result["params"]["min_confidence"], .5)
         self.assertEqual(result["params"]["min_score"], .4)
         self.assertIn("$value_0", result["cypher"])
@@ -83,16 +84,15 @@ class RetrievalTests(unittest.TestCase):
         self.assertAlmostEqual(result["items"][0]["score"], (.6 + 1 + 1) / 3, places=6)
         self.assertEqual(result["items"][0]["score_components"], ["graph", "text", "style"])
         self.assertEqual(result["items"][1]["score_components"], ["graph"])
-        self.assertEqual(result["items"][1]["image_url"], "/images/hf/missing-image.jpg")
+        self.assertIsNone(result["items"][1]["image_url"])
 
-    def test_huggingface_ids_are_returned_without_image_network_calls(self):
+    def test_only_saved_sample_ids_have_image_urls(self):
         result, _, _ = self.run_search([
             {"id": "51727804_0", "score": .8},
             {"id": "graph-id", "item_ID": "hf-id", "score": .7},
         ])
         self.assertEqual([item["image_id"] for item in result["items"]], ["51727804_0", "hf-id"])
-        self.assertEqual([item["image_url"] for item in result["items"]],
-                         ["/images/hf/51727804_0.jpg", "/images/hf/hf-id.jpg"])
+        self.assertEqual([item["image_url"] for item in result["items"]], [None, None])
 
     def test_fashion200k_category_properties_supply_display_type(self):
         result, _, _ = self.run_search([
@@ -127,19 +127,27 @@ class RetrievalTests(unittest.TestCase):
             client.assert_not_called()
 
     def test_preview_never_claims_search_scores_or_connectivity(self):
-        from fashion_how_graphdb import hf_images
-        hf_images._preview_cache.clear()
-        with patch.object(hf_images, "_fetch_rows", return_value=[{"row": {
-            "item_ID": "sample-id_0", "image": {"src": "https://hf.co/sample.jpg"},
-        }}]):
+        with patch.object(service, "sample_ids", return_value={"tops": ["123_0"]}), \
+             patch.object(service, "image_index", return_value={"123_0.jpg": Path("123_0.jpg")}):
             data = service.catalog_preview()
         self.assertFalse(data["ranked"])
-        self.assertEqual(data["source"], "huggingface")
+        self.assertEqual(data["source"], "local")
         self.assertGreater(len(data["items"]), 0)
         self.assertNotIn("score", data["items"][0])
         self.assertFalse(service.configuration(preview=True)["ready"])
         self.assertIsNone(service.image_url(".env"))
         self.assertIsNone(service.image_url("missing.jpg"))
+
+    def test_image_index_only_serves_manifest_ids(self):
+        with TemporaryDirectory() as directory, patch.object(service, "IMAGE_DIR", Path(directory)), \
+             patch.object(service, "sample_ids", return_value={"tops": ["123_0"]}):
+            (Path(directory) / "123_0.jpg").write_bytes(b"image")
+            (Path(directory) / "999_0.jpg").write_bytes(b"image")
+            service.image_index.cache_clear()
+            self.assertEqual(list(service.image_index()), ["123_0.jpg"])
+            self.assertEqual(service.image_url("123_0"), "/images/123_0.jpg")
+            self.assertIsNone(service.image_url("999_0"))
+        service.image_index.cache_clear()
 
 
 class PreviewHTTPTests(unittest.TestCase):
@@ -162,24 +170,15 @@ class PreviewHTTPTests(unittest.TestCase):
                 self.assertEqual(response.status, 200)
                 self.assertTrue(response.read())
         with urlopen(self.base + "/") as response:
-            self.assertIn(b"/assets/app.js?v=20260913-image-queue-2", response.read())
+            self.assertIn(b"/assets/app.js?v=20260927-local-images", response.read())
         with urlopen(self.base + "/api/config") as response:
             self.assertFalse(json.load(response)["ready"])
 
-    def test_preview_proxies_one_image_by_item_id(self):
-        jpeg = b"\xff\xd8\xffpayload"
-        with patch("preview.fetch_image", return_value=(jpeg, "image/jpeg")) as fetch:
-            with urlopen(self.base + "/api/image/90793401_0.jpg") as response:
-                self.assertEqual(response.read(), jpeg)
-                self.assertEqual(response.headers["Cache-Control"], "public, max-age=3600")
-        fetch.assert_called_once_with("90793401_0")
-
-    def test_preview_supports_cached_browser_image_route(self):
-        jpeg = b"\xff\xd8\xffpayload"
-        with patch("preview.fetch_image", return_value=(jpeg, "image/jpeg")) as fetch:
-            with urlopen(self.base + "/images/hf/90793401_0.jpg") as response:
-                self.assertEqual(response.read(), jpeg)
-        fetch.assert_called_once_with("90793401_0")
+    def test_preview_does_not_proxy_hf_images(self):
+        for route in ["/api/image/90793401_0.jpg", "/images/hf/90793401_0.jpg"]:
+            with self.subTest(route=route), self.assertRaises(HTTPError) as exc:
+                urlopen(self.base + route)
+            self.assertEqual(exc.exception.code, 404)
 
     def test_no_file_traversal_or_secret_exposure(self):
         for route in ["/.env", "/assets/../.env", "/assets/%2e%2e/.env", "/images/../.env", "/images/not-found.jpg"]:

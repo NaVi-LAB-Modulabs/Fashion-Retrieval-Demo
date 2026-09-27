@@ -5,9 +5,7 @@
 The web UI uses the dataset-independent name **Fashion Search**. Fashion-How is
 temporary development data; the intended research demo dataset is **Fashion200K**.
 Dataset names belong in experiment documentation and provenance rather than the
-main interface. The initial preview reads up to 12 Fashion200K samples whose IDs end in `_0` from the first 100 Hugging Face rows, without querying Neo4j. Search results
-can resolve Fashion200K images by their original Hugging Face item ID; graph
-ingestion and schema mapping remain a separate step. Catalog preview labels distinguish unranked browsing from
+main interface. The initial preview displays saved images listed in `sample_ids.json`, without querying Neo4j. Search results use the same local image catalog. Catalog preview labels distinguish unranked browsing from
 actual search results, without presenting a dataset as the product name.
 
 The web UI is a retrieval workspace: query and settings at the top, followed by
@@ -63,9 +61,7 @@ environment, plus any optional model/database settings listed below. Redeploy
 after changing environment variables. Use a Neo4j endpoint reachable from the
 deployment. API reference: `/docs`.
 
-Static UI assets are mounted at `/assets`; `/images/{filename}` serves only indexed
-catalog images. The nine bundled sample images total about 0.5 MB. Items whose
-local images are absent are resolved by ID through the image lookup API below.
+Static UI assets are mounted at `/assets`; `/images/{filename}` serves only saved files whose IDs are listed in `sample_ids.json`. Missing images display a placeholder.
 Review the function duration available to the project before a live demo: parser
 and embedding calls can take time, especially when provider retries are needed.
 
@@ -101,56 +97,32 @@ OPENAI_MODEL
 OPENAI_EMBEDDING_MODEL
 ```
 
-## Fashion200K images from Hugging Face
+## Fashion200K sample images
 
-The live web app does not need a local copy of Fashion200K images. It returns
-`image_id` with each result lacking a bundled image, using the Neo4j `item_ID`
-property if present, otherwise `id`. Preserve the original ID, including its
-image suffix (for example, `51727804_0`).
+`sample_ids.json` lists 5,000 Fashion200K IDs across five categories. All 5,000
+corresponding images are stored in `sample_images/` (about 86 MB). The application
+serves these files directly; no image download or extraction script is needed.
 
-After rendering the search evidence, the browser sends IDs to `POST /api/images`
-and receives same-origin `/images/hf/<item_ID>.jpg` proxy URLs. Each image request
-uses one equality predicate against the Dataset Viewer `/filter` endpoint, then
-the server returns the image bytes. At most four upstream requests run concurrently
-per server process; the browser starts at most three image loads at once, and
-successful bytes are cached in memory. No image files are
-stored in the repository or database. Image requests do not change retrieval
-ranking or its measured stage timings.
-
-Defaults (no extra Vercel configuration is required for this public dataset):
-
-| Variable | Default |
-| --- | --- |
-| `HF_IMAGE_DATASET` | `Marqo/fashion200k` |
-| `HF_IMAGE_CONFIG` | `default` |
-| `HF_IMAGE_SPLIT` | `data` |
-| `HF_IMAGE_ID_COLUMN` | `item_ID` |
-| `HF_TOKEN` | Unset; optional server-side read token |
-
-If an image fails to load, the browser retries the proxy once. Provider errors,
-missing IDs and failed images produce an image-unavailable placeholder while
-retaining all search results and evidence. Exported runs retain image IDs. Each
-upstream metadata or image request allows up to 30 seconds, matching the working
-Fashion200K metadata viewer behavior.
-Transient HTTP 429 and 5xx responses are retried twice with short delays.
-`preview.py` also loads the Hugging Face samples and supports image URL refresh. It needs internet access for images, but does not call OpenAI or Neo4j. Preview metadata is cached for at most 60 seconds; failures show an empty preview instead of switching to local samples.
-
-API reference: [filter predicates](https://huggingface.co/docs/dataset-viewer/filter)
-and [temporary image URLs](https://huggingface.co/docs/dataset-viewer/rows).
+The web app and `preview.py` read only local files in `sample_images/` whose IDs
+appear in `sample_ids.json`. They make no Hugging Face image requests. Search
+results without a saved image retain their ranking evidence and show an image
+placeholder. Commit `sample_ids.json` and the `sample_images/` files
+when preparing the deployment; check the hosting provider's file and deployment
+size limits for the full collection.
 
 ## Demo Structure
 
 ```text
 .
 |-- web_app.py                     # FastAPI application entrypoint
-|-- preview.py                     # dependency-free UI preview (HF images)
+|-- preview.py                     # dependency-free UI preview (local images)
 |-- web/                           # HTML, CSS, JavaScript and favicon
 |-- requirements.txt              # application dependencies for local install
 |-- pyproject.toml                 # project dependencies and Vercel entrypoint
 |-- vercel.json                    # FastAPI deployment preset
 |-- tests/                         # offline service and preview tests
-|-- fashion-how/
-|   `-- image/                     # sample image assets
+|-- sample_ids.json               # allowed Fashion200K image IDs
+|-- sample_images/                # saved Fashion200K images
 `-- src/
     `-- fashion_how_graphdb/
         |-- web_service.py         # retrieval API adapter and image catalog
@@ -168,8 +140,8 @@ Search uses `(Item)-[:IS_CATEGORY]->(Category)` and the English taxonomy IDs.
 ## Neo4j Item Properties
 
 For Fashion200K images, each `Item` should preserve the Hugging Face `item_ID`
-as `id` (or supply a separate `item_ID` property). For bundled local images, an
-optional `image_file` property can match a file under `fashion-how/image`.
+as `id` (or supply a separate `item_ID` property). Only IDs in `sample_ids.json`
+with saved image files receive an image URL.
 
 For description-vector reranking, each `Item` can include one of:
 
