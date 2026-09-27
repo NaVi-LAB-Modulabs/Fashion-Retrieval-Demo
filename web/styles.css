@@ -96,6 +96,7 @@ h2 { font-size: 15px; font-weight: 600; letter-spacing: -.25px; }
 .tag.excluded { background: #f5ebe4; border-color: #dec9bc; border-left-color: var(--accent); color: #82482f; }
 .tag.excluded small { color: #946c53; }
 .axis-row { margin: 11px 0 13px; }
+.axis-name { font: 11px var(--mono); font-weight: 600; color: var(--ink); margin-bottom: 7px; overflow-wrap: anywhere; }
 .axis-labels { display: flex; justify-content: space-between; gap: 12px; font-size: 10px; margin-bottom: 8px; color: #5e6665; }
 .axis-track { height: 3px; position: relative; background: #c3c9c5; margin: 0 5px; }
 .axis-dot { width: 10px; height: 10px; border: 2px solid var(--blue); border-radius: 50%; position: absolute; top: -3px; background: var(--paper); transform: translateX(-50%); }

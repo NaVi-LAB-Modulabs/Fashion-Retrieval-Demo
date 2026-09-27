@@ -115,7 +115,7 @@ function axisMarkup(target, itemValue) {
   const left = spec?.left || poles[0];
   const right = spec?.right || poles.at(-1);
   const numericTarget = typeof target.target === "number" ? target.target.toFixed(2) : "N/A";
-  return `<div class="axis-row"><div class="axis-labels"><span>${escapeHTML(left)}</span><span>${escapeHTML(right)}</span></div><div class="axis-track" role="img" aria-label="${escapeHTML(left)} to ${escapeHTML(right)}, target ${numericTarget}"><span class="axis-dot" style="left:${percentage(target.target)}%"></span>${typeof itemValue === "number" ? `<span class="axis-dot item-value" style="left:${percentage(itemValue)}%"></span>` : ""}</div><p class="axis-evidence">Target ${numericTarget}${typeof itemValue === "number" ? ` · Item ${itemValue.toFixed(2)} (square)` : ""}${target.evidence ? ` · ${escapeHTML(target.evidence)}` : ""}</p></div>`;
+  return `<div class="axis-row"><div class="axis-name">${escapeHTML(target.axis)}</div><div class="axis-labels"><span>${escapeHTML(left)}</span><span>${escapeHTML(right)}</span></div><div class="axis-track" role="img" aria-label="${escapeHTML(target.axis)}: ${escapeHTML(left)} to ${escapeHTML(right)}, target ${numericTarget}"><span class="axis-dot" style="left:${percentage(target.target)}%"></span>${typeof itemValue === "number" ? `<span class="axis-dot item-value" style="left:${percentage(itemValue)}%"></span>` : ""}</div><p class="axis-evidence">Target ${numericTarget}${typeof itemValue === "number" ? ` · Item ${itemValue.toFixed(2)} (square)` : ""}${target.evidence ? ` · ${escapeHTML(target.evidence)}` : ""}</p></div>`;
 }
 
 // Highlight tokens after escaping every non-token segment; copied/exported text stays exact.
