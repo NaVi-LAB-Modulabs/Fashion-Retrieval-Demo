@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from fashion_how_graphdb import search
+from fashion_how_graphdb import hybrid_search, search
 
 
 class Fashion200KSearchTests(unittest.TestCase):
@@ -41,19 +41,16 @@ class Fashion200KSearchTests(unittest.TestCase):
                 prompt = json.loads(provider.call_args.kwargs["user_prompt"])
                 self.assertEqual(prompt["query"], query)
                 self.assertIn("navy", prompt["catalog"]["common_groups"]["colors"]["values"])
-                cypher, params = search.build_search_cypher(extraction, min_confidence=.5)
+                cypher = hybrid_search.result_cypher(extraction)
                 self.assertIn("[:IS_CATEGORY]->(item_category:Category)", cypher)
-                self.assertNotIn("IS_TYPE", cypher)
-                self.assertNotIn("HAS_STYLE", cypher)
-                self.assertNotIn("HAS_OCCASION", cypher)
+                self.assertIn("vector.similarity.cosine", cypher)
                 self.assertIn("CALL (item) {", cypher)
-                self.assertNotIn("CALL {\n  WITH item", cypher)
-                self.assertEqual(params["item_type_codes"], ["pants"])
-                self.assertEqual(params["value_0"], "navy")
-                self.assertEqual(params["value_1"], "pants_fit:wide_leg")
-                self.assertEqual(params["excluded_value_0"], "denim")
-                self.assertEqual(params["excluded_value_1"], "pants_rise:low_rise")
-                self.assertEqual(cypher.count("NOT EXISTS"), 2)
+                self.assertNotIn("IS_TYPE", cypher)
+                self.assertEqual(extraction["item_type_codes"], ["pants"])
+                self.assertEqual(
+                    hybrid_search.attribute_candidate_cypher(extraction["category_filters"][0])[1],
+                    "pants_fit:wide_leg",
+                )
 
     def test_legacy_values_and_incompatible_category_details_are_rejected(self):
         result = search.normalize_extraction({
@@ -67,6 +64,25 @@ class Fashion200KSearchTests(unittest.TestCase):
         self.assertEqual(result["item_type_codes"], ["tops"])
         self.assertEqual([item["value"] for item in result["common_filters"]], ["blue"])
         self.assertEqual(result["category_filters"], [])
+
+    def test_updated_taxonomy_accepts_new_graph_ids_and_rejects_removed_values(self):
+        result = search.normalize_extraction({
+            "item_type_codes": ["tops", "dresses"],
+            "common_filters": [
+                {"group": "colors", "value": "burgundy"},
+                {"group": "colors", "value": "cream"},
+            ],
+            "category_filters": [
+                {"type_code": "tops", "group": "top_type", "value": "blouse"},
+                {"type_code": "dresses", "group": "dress_silhouette", "value": "flared"},
+                {"type_code": "dresses", "group": "dress_silhouette", "value": "fit_and_flare"},
+            ],
+        })
+        self.assertEqual([item["value"] for item in result["common_filters"]], ["burgundy"])
+        self.assertEqual(
+            [(item["group"], item["value"]) for item in result["category_filters"]],
+            [("top_type", "blouse"), ("dress_silhouette", "flared")],
+        )
 
 
 if __name__ == "__main__":

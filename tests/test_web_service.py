@@ -25,7 +25,7 @@ class RetrievalTests(unittest.TestCase):
     def setUp(self):
         self.extraction = {
             "item_type_codes": ["tops"],
-            "common_filters": [{"group": "colors", "value": "blue"}],
+            "common_filters": [{"group": "colors", "value": "blue", "hard": True}],
             "category_filters": [], "excluded_common_filters": [],
             "excluded_category_filters": [], "description_query": "",
             "style_axis_targets": [],
@@ -34,25 +34,33 @@ class RetrievalTests(unittest.TestCase):
     def run_search(self, rows, **settings):
         driver = MagicMock()
         session = driver.session.return_value.__enter__.return_value
-        session.run.return_value = [{"result": row} for row in rows]
+        def run_query(cypher, **params):
+            if "db.index.vector.queryNodes" in cypher:
+                return [{"id": row["id"], "score": row.get("text_score", 0.0)} for row in rows]
+            if "RETURN item.id AS id" in cypher:
+                return [{"id": row["id"]} for row in rows]
+            return [{"result": row} for row in rows]
+        session.run.side_effect = run_query
         client = MagicMock()
         client.embeddings.create.return_value = SimpleNamespace(data=[SimpleNamespace(embedding=[1.0, 0.0])])
-        query_factory = lambda text, **kwargs: text
         with ExitStack() as stack:
             stack.enter_context(patch.object(service, "configuration", return_value={"ready": True}))
             stack.enter_context(patch.object(service, "neo4j_driver", return_value=driver))
             stack.enter_context(patch.object(service, "openai_client", return_value=client))
-            stack.enter_context(patch.object(service.search, "extract_search_filters", return_value=self.extraction))
-            stack.enter_context(patch.dict(sys.modules, {"neo4j": SimpleNamespace(Query=query_factory)}))
+            stack.enter_context(patch.object(
+                service.search, "extract_search_filters",
+                return_value=service.search.normalize_extraction(self.extraction),
+            ))
             result = service.retrieve({"query": "a blue blouse", **settings})
         return result, session, client
 
     @patch.object(service, "image_index", return_value={"51727804_0.jpg": Path("51727804_0.jpg")})
     def test_graph_results_keep_evidence_and_hide_unknown_properties(self, image_index):
         result, session, client = self.run_search([
-            {"id": "51727804_0", "type_code": "BL", "score": .8,
+            {"id": "51727804_0", "type_code": "BL", "text_score": None,
              "description_embedding": [1, 2, 3], "internal_note": "private",
-             "matched_filters": [{"group": "colors", "value": "blue", "score": .8}]},
+             "mapped_attributes": [{"scope": "common", "group": "colors", "value": "blue",
+                                    "confidence": .8}]},
         ], limit=6, min_confidence=.5, min_score=.4)
         item = result["items"][0]
         self.assertEqual(item["score"], .8)
@@ -64,29 +72,31 @@ class RetrievalTests(unittest.TestCase):
         self.assertEqual(item["image_id"], "51727804_0")
         self.assertEqual(result["params"]["min_confidence"], .5)
         self.assertEqual(result["params"]["min_score"], .4)
-        self.assertIn("$value_0", result["cypher"])
+        self.assertIn("$query_embedding", result["cypher"])
         self.assertIn("MATCH", result["cypher"])
-        self.assertEqual(session.run.call_args.kwargs["limit"], 6)
-        client.embeddings.create.assert_not_called()
+        self.assertEqual(session.run.call_args.kwargs["candidate_ids"], ["51727804_0"])
+        client.embeddings.create.assert_called_once()
 
     def test_soft_reranking_uses_larger_pool_then_final_threshold(self):
         self.extraction["description_query"] = "soft blue"
         self.extraction["style_axis_targets"] = [{"axis": "casual_formal", "target": .2, "evidence": "casual"}]
         result, session, _ = self.run_search([
-            {"id": "BL-001", "score": .6, "description_embedding": [1, 0], "casual_formal": .2},
-            {"id": "BL-002", "score": .3, "description_embedding": [0, 1], "casual_formal": 1},
-            {"id": "missing-image", "score": .8},
+            {"id": "BL-001", "text_score": 1.0, "casual_formal": .2,
+             "mapped_attributes": [{"scope": "common", "group": "colors", "value": "blue",
+                                    "confidence": .6}]},
+            {"id": "BL-002", "text_score": .5, "casual_formal": 1,
+             "mapped_attributes": [{"scope": "common", "group": "colors", "value": "blue",
+                                    "confidence": .3}]},
+            {"id": "missing-image", "text_score": .8, "mapped_attributes": []},
         ], limit=6, min_score=.75)
-        self.assertEqual(session.run.call_args.kwargs["limit"], 100)
-        self.assertNotIn("min_score", result["params"])
+        self.assertEqual(result["params"]["min_score"], .75)
         self.assertEqual(result["candidate_count"], 3)
-        self.assertEqual(result["result_count"], 2)
-        self.assertAlmostEqual(result["items"][0]["score"], (.6 + 1 + 1) / 3, places=6)
+        self.assertEqual(result["result_count"], 1)
+        self.assertAlmostEqual(result["items"][0]["score"], .35 * .6 + .55 + .1, places=6)
         self.assertEqual(result["items"][0]["score_components"], ["graph", "text", "style"])
-        self.assertEqual(result["items"][1]["score_components"], ["graph"])
-        self.assertIsNone(result["items"][1]["image_url"])
 
     def test_only_saved_sample_ids_have_image_urls(self):
+        self.extraction["common_filters"] = []
         result, _, _ = self.run_search([
             {"id": "51727804_0", "score": .8},
             {"id": "graph-id", "item_ID": "hf-id", "score": .7},
@@ -95,6 +105,7 @@ class RetrievalTests(unittest.TestCase):
         self.assertEqual([item["image_url"] for item in result["items"]], [None, None])
 
     def test_fashion200k_category_properties_supply_display_type(self):
+        self.extraction["common_filters"] = []
         result, _, _ = self.run_search([
             {"id": "51727804_0", "category": "tops", "category_name": "tops", "score": .8},
         ])
@@ -107,7 +118,7 @@ class RetrievalTests(unittest.TestCase):
         result, _, _ = self.run_search([])
         self.assertEqual(result["items"], [])
         self.assertEqual(result["candidate_count"], 0)
-        self.assertEqual(result["extraction"], self.extraction)
+        self.assertEqual(result["extraction"], service.search.normalize_extraction(self.extraction))
         self.assertTrue(result["cypher"])
         self.assertIn("total_ms", result["timings"])
 

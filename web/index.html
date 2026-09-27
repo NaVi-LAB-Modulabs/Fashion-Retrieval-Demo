@@ -17,7 +17,7 @@
     <div class="header-tools"><span id="runtime-label" role="status">Checking server...</span><button type="button" data-open-method>Method &amp; scoring</button></div>
   </header>
   <main id="explore">
-    <div class="page-heading"><div><h1>Retrieval workspace</h1><p>Query the catalog. Inspect the constraints, executed query and ranking evidence.</p></div><button type="button" id="export-run" class="export-button" disabled>Export run <span>.json</span></button></div>
+    <div class="page-heading"><div><h1>Retrieval workspace</h1><p>Query the catalog. Inspect the constraints, candidate query and ranking evidence.</p></div><button type="button" id="export-run" class="export-button" disabled>Export run <span>.json</span></button></div>
     <section class="search-panel" aria-label="Query and retrieval settings">
       <form id="search-form">
         <label for="query" class="field-label">Search query</label>
@@ -28,7 +28,7 @@
           <label>Maximum results<select id="limit"><option value="6">6</option><option value="12" selected>12</option><option value="24">24</option><option value="50">50</option></select></label>
           <label>Min. final score <output for="min-score" id="min-score-value">0.00</output><input type="range" id="min-score" min="0" max="1" step="0.05" value="0"></label>
           <label>Min. edge confidence <output for="min-confidence" id="min-confidence-value">0.00</output><input type="range" id="min-confidence" min="0" max="1" step="0.05" value="0"></label>
-          <p>Settings apply to the next run. Edge confidence filters required attribute edges; final score filters ranked results.</p>
+          <p>Settings apply to the next run. Edge confidence sets the minimum for matched attribute edges; final score filters ranked results.</p>
         </div>
       </form>
       <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
@@ -41,7 +41,7 @@
         <div class="panel-heading"><span class="panel-number">01</span><h2 id="inspector-title">Extracted constraints</h2></div>
         <p class="panel-description">Structured output from the query parser.</p>
         <div id="inspector-intro" class="constraint-placeholder">
-          <dl><div><dt>Item types</dt><dd>Not extracted</dd></div><div><dt>Required attributes</dt><dd>Not extracted</dd></div><div><dt>Excluded attributes</dt><dd>Not extracted</dd></div><div><dt>Semantic description</dt><dd>Not extracted</dd></div><div><dt>Style targets</dt><dd>Not extracted</dd></div></dl>
+          <dl><div><dt>Item types</dt><dd>Not extracted</dd></div><div><dt>Mentioned attributes</dt><dd>Not extracted</dd></div><div><dt>Must match</dt><dd>Not extracted</dd></div><div><dt>Excluded attributes</dt><dd>Not extracted</dd></div><div><dt>Semantic description</dt><dd>Not extracted</dd></div><div><dt>Style targets</dt><dd>Not extracted</dd></div></dl>
           <p>Run a query to inspect the parser output. No constraints have been inferred from the preview images.</p>
         </div>
         <div id="search-insights" hidden></div>
@@ -49,13 +49,13 @@
       </aside>
 
       <section class="query-plan panel" id="query-plan" aria-labelledby="query-title">
-        <div class="panel-heading"><span class="panel-number">02</span><h2 id="query-title">Generated Cypher</h2></div>
-        <p class="panel-description">The exact query and parameters sent to Neo4j.</p>
+        <div class="panel-heading"><span class="panel-number">02</span><h2 id="query-title">Final candidate query</h2></div>
+        <p class="panel-description">After vector and attribute candidate selection, this Cypher fetches candidate evidence. The embedding values are omitted from the displayed parameters.</p>
         <div class="code-toolbar"><span id="query-state">Not executed</span><div class="code-actions"><label><input id="wrap-cypher" type="checkbox" checked> Wrap</label><button type="button" id="expand-cypher" disabled>Expand</button><button type="button" id="copy-cypher" disabled>Copy query</button></div></div>
         <pre class="cypher-editor" tabindex="0" aria-label="Generated Cypher"><code id="cypher-code">No query has been generated.
 
-Run retrieval to inspect the executed Cypher here.</code></pre>
-        <div class="parameter-heading"><h3>Query parameters</h3><button type="button" id="copy-params" disabled>Copy JSON</button></div>
+Run retrieval to inspect the final candidate query here.</code></pre>
+        <div class="parameter-heading"><h3>Search parameters</h3><button type="button" id="copy-params" disabled>Copy JSON</button></div>
         <div id="parameter-list" class="parameter-list"><p class="muted">No parameters yet.</p></div>
         <details class="raw-params"><summary>Parameters <span>JSON</span></summary><pre><code id="params-code">No parameters yet.</code></pre></details>
         <div class="run-settings"><h3>Executed settings</h3><p id="run-summary">No completed run. Controls above apply to your next search.</p></div>
@@ -72,11 +72,11 @@ Run retrieval to inspect the executed Cypher here.</code></pre>
       </section>
     </div>
   </main>
-  <footer class="site-footer"><p>Scoring: mean of active, available components. <span>N/A = unavailable or inactive.</span></p><button type="button" data-open-method>Read the scoring method</button></footer>
+  <footer class="site-footer"><p>Scoring: weighted mean of available semantic, graph and requested style components. <span>N/A = unavailable or inactive.</span></p><button type="button" data-open-method>Read the scoring method</button></footer>
 
   <dialog id="item-dialog" aria-labelledby="item-dialog-title"><button type="button" class="dialog-close" aria-label="Close item details" data-close-dialog>×</button><div id="item-dialog-content"></div></dialog>
-  <dialog id="cypher-dialog" aria-labelledby="expanded-query-title"><button type="button" class="dialog-close" aria-label="Close expanded query" data-close-dialog>×</button><h2 id="expanded-query-title">Executed Cypher</h2><p class="panel-description">The complete query from the selected run.</p><pre tabindex="0" aria-label="Complete executed Cypher"><code id="expanded-cypher-code"></code></pre></dialog>
-  <dialog id="method-dialog" aria-labelledby="method-title"><button type="button" class="dialog-close" aria-label="Close methodology" data-close-dialog>×</button><p class="eyebrow">METHOD REFERENCE</p><h2 id="method-title">Retrieval &amp; scoring</h2><ol class="method-list"><li><h3>Parse the query</h3><p>An LLM maps the query to garment types, required and excluded attributes, a semantic description, and style-axis targets.</p></li><li><h3>Retrieve graph candidates</h3><p>Parameterized Cypher applies the extracted constraints in Neo4j. The graph score averages the matched attribute edge scores. Minimum edge confidence filters the required attribute edges.</p></li><li><h3>Rerank available candidates</h3><p>Semantic similarity uses cosine similarity scaled to [0, 1]. A style-axis score is 1 − |item value − target|, averaged across available requested axes. The final score averages all active, available graph, semantic and style components.</p></li></ol><div class="method-note">Missing or inactive components are N/A, not zero. With no active components, the final score falls back to the graph score. Candidate counts refer to the fetched, limited pool. Scores are retrieval signals, not probabilities.</div></dialog>
+  <dialog id="cypher-dialog" aria-labelledby="expanded-query-title"><button type="button" class="dialog-close" aria-label="Close expanded query" data-close-dialog>×</button><h2 id="expanded-query-title">Final candidate query</h2><p class="panel-description">The candidate evidence query from the selected run.</p><pre tabindex="0" aria-label="Final candidate Cypher"><code id="expanded-cypher-code"></code></pre></dialog>
+  <dialog id="method-dialog" aria-labelledby="method-title"><button type="button" class="dialog-close" aria-label="Close methodology" data-close-dialog>×</button><p class="eyebrow">METHOD REFERENCE</p><h2 id="method-title">Retrieval &amp; scoring</h2><ol class="method-list"><li><h3>Parse the query</h3><p>An LLM extracts garment categories, positive and excluded attributes, directly named attributes, a positive visual description, and requested style targets.</p></li><li><h3>Select candidates</h3><p>The existing description vector index and required attribute edges supply separate candidate pools. A named category limits both pools. Candidate IDs are combined before fetching graph evidence.</p></li><li><h3>Filter and rank</h3><p>Directly named attributes, such as white in “white jacket”, require a matching graph edge and are the only attributes used in the graph score. Excluded attributes remove matching items. Inferred attributes are not used for graph candidate selection or scoring. Matching edges must meet the chosen confidence threshold. The final score is a weighted mean of available description similarity (55%), graph attribute match (35%), and requested style axes (10%).</p></li></ol><div class="method-note">Unavailable components are omitted and remaining weights are normalized. Candidate counts refer to fetched candidates before final filtering. Scores are retrieval signals, not probabilities.</div></dialog>
   <noscript><p class="notice">Enable JavaScript to inspect results and run queries.</p></noscript>
 </body>
 </html>

@@ -9,7 +9,7 @@ main interface. The initial preview displays saved images listed in `sample_ids.
 actual search results, without presenting a dataset as the product name.
 
 The web UI is a retrieval workspace: query and settings at the top, followed by
-extracted constraints, executed Cypher and ranked results in three adjacent panes.
+extracted constraints, the final candidate query and ranked results in three adjacent panes.
 Cypher stays visible without opening an accordion. Parameter values, applied
 settings and measured stage timings are shown alongside the query. Image cards
 include component scores; a table and item details provide more ranking evidence.
@@ -21,8 +21,9 @@ or frontend build is required. The application entrypoint is `web_app.py`.
 
 Features include responsive image cards, an optional ranking table, natural
 language examples, parser/threshold controls, extracted and excluded constraints,
-style-axis targets, per-item score breakdowns and mapped attributes, exact Cypher
-and parameters, measured stage timings, and downloadable JSON search runs.
+style-axis targets, per-item score breakdowns and mapped attributes, the final
+candidate Cypher with redacted embedding parameters, measured stage timings, and
+downloadable JSON search runs.
 The initial gallery is explicitly an **unranked catalog preview**, with no invented
 scores or attributes. Live results always come from the existing retrieval code.
 
@@ -95,6 +96,7 @@ Optional:
 NEO4J_DATABASE
 OPENAI_MODEL
 OPENAI_EMBEDDING_MODEL
+NEO4J_DESCRIPTION_VECTOR_INDEX
 ```
 
 ## Fashion200K sample images
@@ -126,7 +128,8 @@ size limits for the full collection.
 `-- src/
     `-- fashion_how_graphdb/
         |-- web_service.py         # retrieval API adapter and image catalog
-        |-- search.py              # query parsing, Cypher build, reranking
+        |-- search.py              # query parsing and CLI
+        |-- hybrid_search.py       # vector/graph candidate union and reranking
         |-- neo4j_config.py        # Neo4j connection defaults
         |-- taxonomy.py
         |-- category_taxonomy.py
@@ -136,6 +139,19 @@ size limits for the full collection.
 This demo only searches an existing Fashion-200K graph. Image attribute extraction
 and graph import are handled by the separate Fashion-Retrieval project.
 Search uses `(Item)-[:IS_CATEGORY]->(Category)` and the English taxonomy IDs.
+The query parser identifies the category, positive and excluded graph attributes,
+directly named attributes, a positive visual description, and requested
+style axes. Vector search over `description_embedding` and graph attribute
+matches produce separate candidate pools; IDs are merged before hard filtering.
+Category limits candidate selection when mentioned. Directly named positive
+attributes such as "white" in "white jacket" require a matching graph edge;
+the same required attributes supply graph candidates and the attribute score.
+Inferred attributes stay in the parsed output but do not affect graph candidates
+or the attribute score. Excluded attributes only remove matching items.
+Final scoring combines description
+similarity (55%), matching graph edges (35%), and mentioned style axes (10%);
+weights are normalized across available components. Color, pattern and category
+attributes carry full graph weight; materials and seasons are weaker signals.
 
 ## Neo4j Item Properties
 
@@ -143,22 +159,25 @@ For Fashion200K images, each `Item` should preserve the Hugging Face `item_ID`
 as `id` (or supply a separate `item_ID` property). Only IDs in `sample_ids.json`
 with saved image files receive an image URL.
 
-For description-vector reranking, each `Item` can include one of:
+Live search requires `Item.description_embedding` with 3,072 dimensions,
+`Item.description_embedding_model` set to `text-embedding-3-large`, and an existing
+Neo4j vector index named `item_description_embedding` over that property.
+The query embedding must use the same model and dimensions as stored items.
+Set `OPENAI_EMBEDDING_MODEL` if the indexed item vectors use another model;
+set `NEO4J_DESCRIPTION_VECTOR_INDEX` if the index has another name. This app
+queries the existing index and does not create it.
 
 ```text
 description_embedding
-image_description_embedding
-text_description_embedding
-text_embedding
-embedding
+description_embedding_model
 ```
 
 For style-axis reranking, each `Item` can include:
 
 ```text
-trendy_classic
-cool_warm
-feminine_mannish
+visual_trend
+thermal_impression
+design_expression
 minimal_maximal
 casual_formal
 soft_sharp

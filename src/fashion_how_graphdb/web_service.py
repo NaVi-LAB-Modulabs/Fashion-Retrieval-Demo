@@ -12,7 +12,7 @@ from time import perf_counter
 from typing import Any
 from urllib.parse import quote
 
-from . import search
+from . import hybrid_search, search
 from .diagnostics import retrieval_stage
 from .neo4j_config import (
     DEFAULT_NEO4J_DATABASE, DEFAULT_NEO4J_PASSWORD,
@@ -141,26 +141,37 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
             request["query"], client=openai_client(), model=request["model"],
         )
     parsed = perf_counter()
-    with retrieval_stage("query construction"):
-        soft = search.needs_soft_rerank(extraction)
-        cypher, params = search.build_search_cypher(
-            extraction,
-            limit=search.soft_candidate_limit(request["limit"]) if soft else request["limit"],
-            min_confidence=request["min_confidence"],
-            min_score=None if soft else request["min_score"],
-        )
-    with retrieval_stage("Neo4j retrieval"):
-        driver = neo4j_driver()
-        with driver.session(**({"database": DEFAULT_NEO4J_DATABASE} if DEFAULT_NEO4J_DATABASE else {})) as session:
-            from neo4j import Query
-            raw_results = [dict(row["result"]) for row in session.run(Query(cypher, timeout=30.0), **params)]
+    driver = neo4j_driver()
+    with driver.session(**({"database": DEFAULT_NEO4J_DATABASE} if DEFAULT_NEO4J_DATABASE else {})) as session:
+        with retrieval_stage("candidate selection"):
+            candidate_ids, embedding = hybrid_search.select_candidates(
+                session, extraction, request["query"], client=openai_client(),
+                embedding_model=search.DEFAULT_EMBEDDING_MODEL,
+                limit=request["limit"], min_confidence=request["min_confidence"],
+            )
+        with retrieval_stage("Neo4j retrieval"):
+            cypher = hybrid_search.result_cypher(extraction)
+            query_params = hybrid_search.result_params(
+                extraction, candidate_ids, embedding, search.DEFAULT_EMBEDDING_MODEL,
+            )
+            raw_results = [
+                dict(row["result"]) for row in session.run(cypher, **query_params)
+            ] if candidate_ids else []
     retrieved = perf_counter()
     with retrieval_stage("reranking"):
-        items = search.rerank_search_results(
-            raw_results, extraction, client=openai_client() if soft else None,
-            embedding_model=search.DEFAULT_EMBEDDING_MODEL, limit=request["limit"],
-            min_score=request["min_score"] if soft else None,
+        items = hybrid_search.rerank(
+            raw_results, extraction, limit=request["limit"],
+            min_confidence=request["min_confidence"], min_score=request["min_score"],
         )
+    params = {
+        "candidate_ids": candidate_ids,
+        "item_type_codes": query_params["item_type_codes"],
+        "vector_index": hybrid_search.VECTOR_INDEX_NAME,
+        "embedding_model": search.DEFAULT_EMBEDDING_MODEL,
+        "query_embedding": f"<{len(embedding)} dimensions; omitted from response>",
+        "min_confidence": request["min_confidence"],
+        "min_score": request["min_score"],
+    }
     # Only expose fields needed to explain retrieval; never serialize arbitrary DB properties.
     fields = ("id", "category", "category_name", "type_code", "type_name", "score", "graph_score", "text_score",
               "style_score", "score_components", "matched_filters", "mapped_attributes", "style_axis_matches")
@@ -179,7 +190,7 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
         "query": request["query"], "settings": request, "items": results,
         "extraction": extraction, "cypher": cypher, "params": params,
         "candidate_count": len(raw_results), "result_count": len(results),
-        "reranked": soft, "embedding_model": search.DEFAULT_EMBEDDING_MODEL,
+        "reranked": True, "embedding_model": search.DEFAULT_EMBEDDING_MODEL,
         "timings": {"parse_ms": round((parsed - started) * 1000),
                     "graph_ms": round((retrieved - parsed) * 1000),
                     "rerank_ms": round((finished - retrieved) * 1000),

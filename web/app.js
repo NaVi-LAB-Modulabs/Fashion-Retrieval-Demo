@@ -49,7 +49,7 @@ function renderItems() {
   $("results-title").firstChild.textContent = ranked ? "Search results" : "Catalog preview";
   $("result-count").textContent = items.length;
   $("results-caption").textContent = ranked
-    ? `${items.length} ranked ${items.length === 1 ? "match" : "matches"} from ${state.run.candidate_count} fetched graph candidates · “${state.run.query}”`
+    ? `${items.length} ranked ${items.length === 1 ? "match" : "matches"} from ${state.run.candidate_count} fetched candidates · “${state.run.query}”`
     : "Preview images. Run a query to retrieve and rank matching items.";
   $("catalog-footnote").innerHTML = '<span class="status-dot"></span>' + (ranked
     ? " Select an item for matched attributes and score details. G = graph · T = semantic · S = style."
@@ -114,8 +114,8 @@ function resetEvidence(running = false) {
   $("query-plan").hidden = false;
   $("query-state").textContent = running ? "Awaiting response" : "Not executed";
   $("cypher-code").textContent = running
-    ? "Waiting for the retrieval response.\n\nThe executed query will appear here when the run finishes."
-    : "No query has been generated.\n\nRun retrieval to inspect the executed Cypher here.";
+    ? "Waiting for the retrieval response.\n\nThe final candidate query will appear here when the run finishes."
+    : "No query has been generated.\n\nRun retrieval to inspect the final candidate query here.";
   $("cypher-code").parentElement.classList.add("empty-code");
   $("parameter-list").innerHTML = `<p class="muted">${running ? "Waiting for parameters..." : "No parameters yet."}</p>`;
   $("params-code").textContent = running ? "Waiting for parameters..." : "No parameters yet.";
@@ -137,24 +137,26 @@ function renderInsights() {
   $("search-insights").hidden = false;
   $("query-plan").hidden = false;
   const extracted = run.extraction;
-  const hard = [...(extracted.common_filters || []), ...(extracted.category_filters || [])];
+  const positive = [...(extracted.common_filters || []), ...(extracted.category_filters || [])];
+  const hard = positive.filter((filter) => filter.hard);
   const excluded = [...(extracted.excluded_common_filters || []), ...(extracted.excluded_category_filters || [])];
   const types = (extracted.item_type_codes || []).map((code) => ({group: code, value: state.config?.type_names?.[code] || code}));
   const axes = extracted.style_axis_targets || [];
   $("search-insights").innerHTML = `
     <div class="insight-section"><h3 class="insight-label">Item types</h3>${types.length ? tags(types) : '<p class="muted">Any type</p>'}</div>
-    <div class="insight-section"><h3 class="insight-label">Required attributes (${hard.length})</h3>${hard.length ? tags(hard) : '<p class="muted">None extracted</p>'}</div>
+    <div class="insight-section"><h3 class="insight-label">Mentioned attributes (${positive.length})</h3>${positive.length ? tags(positive) : '<p class="muted">None extracted</p>'}</div>
+    <div class="insight-section"><h3 class="insight-label">Must match (${hard.length})</h3>${hard.length ? tags(hard) : '<p class="muted">None specified</p>'}</div>
     <div class="insight-section"><h3 class="insight-label">Excluded attributes (${excluded.length})</h3>${excluded.length ? tags(excluded, true) : '<p class="muted">None extracted</p>'}</div>
     <div class="insight-section"><h3 class="insight-label">Semantic description</h3><p${extracted.description_query ? "" : ' class="muted"'}>${escapeHTML(extracted.description_query || "Not requested")}</p></div>
     <div class="insight-section"><h3 class="insight-label">Style targets (${axes.length})</h3>${axes.length ? axes.map((t) => axisMarkup(t)).join("") : '<p class="muted">Not requested</p>'}</div>`;
   $("cypher-code").innerHTML = highlightCypher(run.cypher);
   $("cypher-code").parentElement.classList.remove("empty-code");
-  $("query-state").textContent = state.lastAttemptFailed ? "Previous run · executed query" : "Executed query";
+  $("query-state").textContent = state.lastAttemptFailed ? "Previous run · candidate query" : "Candidate query";
   $("params-code").textContent = JSON.stringify(run.params, null, 2);
   $("parameter-list").innerHTML = `<dl>${Object.entries(run.params).map(([key, value]) => `<div class="parameter-row"><dt>$${escapeHTML(key)}</dt><dd>${escapeHTML(JSON.stringify(value))}</dd></div>`).join("")}</dl>`;
   $("extraction-code").textContent = JSON.stringify(extracted, null, 2);
   const settings = run.settings;
-  $("run-summary").textContent = `Parser: ${settings.model} · Results: ${settings.limit} · Min. score: ${settings.min_score ?? "off"} · Min. edge confidence: ${settings.min_confidence ?? "off"}. ${run.reranked ? "Soft reranking requested." : "Graph ranking only."}`;
+  $("run-summary").textContent = `Parser: ${settings.model} · Results: ${settings.limit} · Min. score: ${settings.min_score ?? "off"} · Min. edge confidence: ${settings.min_confidence ?? "off"}. ${run.reranked ? "Weighted reranking applied." : "Graph ranking only."}`;
   $("run-state").textContent = state.lastAttemptFailed ? "Previous run" : "Completed";
   $("parse-time").textContent = `${run.timings.parse_ms} ms`;
   $("graph-time").textContent = `${run.timings.graph_ms} ms`;
@@ -175,7 +177,7 @@ function openItem(index) {
   const components = item.score_components || [];
   const rows = [["Final", item.score, true], ["Graph", item.graph_score, components.includes("graph")], ["Semantic", item.text_score, components.includes("text")], ["Style", item.style_score, components.includes("style")]];
   $("item-dialog-content").innerHTML = `<div class="dialog-layout"><div>${imageMarkup(item, "dialog-image")}</div><div class="dialog-copy"><p class="eyebrow">${ranked ? `RANK ${String(index + 1).padStart(2, "0")} / MATCH EVIDENCE` : "CATALOG PREVIEW"}</p><h2 id="item-dialog-title">${escapeHTML(item.type_name || item.type_code || "Garment")}</h2><p>${escapeHTML(item.id)}</p>
-    ${ranked ? `<div class="score-breakdown">${rows.map(([name, value, active]) => `<div class="score-row${active ? "" : " inactive"}"><span>${name}</span><span class="score-bar" aria-hidden="true"><span style="width:${active ? percentage(value) : 0}%"></span></span><strong>${active ? score(value) : "N/A"}</strong></div>`).join("")}</div><p class="dialog-note">${components.length ? `Final = mean of ${escapeHTML(components.map((c) => c === "text" ? "semantic" : c).join(" + "))}.` : "No active scoring components; final score falls back to the graph score."} N/A means unavailable or inactive. Scores are not probabilities.</p>
+    ${ranked ? `<div class="score-breakdown">${rows.map(([name, value, active]) => `<div class="score-row${active ? "" : " inactive"}"><span>${name}</span><span class="score-bar" aria-hidden="true"><span style="width:${active ? percentage(value) : 0}%"></span></span><strong>${active ? score(value) : "N/A"}</strong></div>`).join("")}</div><p class="dialog-note">Final uses available component weights: semantic 55%, graph 35%, style 10% when requested. N/A means unavailable or inactive. Scores are not probabilities.</p>
       <h3>Matched graph attributes</h3>${item.matched_filters?.length ? attributeList(item.matched_filters) : '<p class="muted">No scored attribute matches for this query.</p>'}
       ${item.style_axis_matches?.length ? `<h3>Style-axis evidence</h3>${item.style_axis_matches.map((t) => axisMarkup(t, t.value)).join("")}` : ""}
       ${item.mapped_attributes?.length ? `<h3>All mapped attributes</h3>${attributeList(item.mapped_attributes)}` : ""}`
