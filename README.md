@@ -149,6 +149,12 @@ attributes such as "white" in "white jacket" require a matching graph edge;
 the same required attributes supply graph candidates and the attribute score.
 Inferred attributes stay in the parsed output but do not affect graph candidates
 or the attribute score. Excluded attributes only remove matching items.
+Attribute filtering and graph scoring both use `confidence * metric`: color
+coverage, pattern/category prominence, or season score. Materials and attributes
+without a metric use confidence alone. `min_confidence` is retained as the API/CLI
+parameter name, but now thresholds this attribute match score. The web UI labels
+it **Min. attribute match**. A threshold of zero leaves low-coverage matches
+eligible; raise it to require stronger matches.
 Final scoring combines description
 similarity (55%), matching graph edges (35%), and mentioned style axes (10%);
 weights are normalized across available components. Color, pattern and category

@@ -33,6 +33,15 @@ def query_embedding(client: Any, text: str, model: str) -> list[float]:
     return [float(value) for value in response.data[0].embedding]
 
 
+def _attribute_metric_name(attribute: dict[str, Any]) -> str | None:
+    group = attribute.get("group")
+    return (
+        "coverage" if group == "colors" else
+        "prominence" if group == "patterns" or attribute.get("scope") == "category" else
+        "strength" if group == "seasons" else None
+    )
+
+
 def attribute_candidate_cypher(search_filter: dict[str, Any]) -> tuple[str, str]:
     if search_filter["scope"] == "common":
         spec = search.COMMON_FILTER_GROUPS[search_filter["group"]]
@@ -41,15 +50,25 @@ def attribute_candidate_cypher(search_filter: dict[str, Any]) -> tuple[str, str]
     else:
         relation, label = "HAS_ATTRIBUTE", "Attribute"
         value_id = category_attribute_id(search_filter["group"], search_filter["value"])
+    metric_name = _attribute_metric_name(search_filter)
+    edge_property = "score" if metric_name == "strength" else metric_name
+    metric_expression = (
+        f"coalesce(toFloat(edge.{edge_property}), 1.0)" if edge_property else "1.0"
+    )
     cypher = (
         f"MATCH (item:Item)-[edge:{relation}]->(:{label} {{id: $value_id}})\n"
-        "WHERE coalesce(edge.confidence, 0.0) >= $min_confidence\n"
+        "WITH item, coalesce(toFloat(edge.confidence), 0.0) AS confidence,\n"
+        f"  {metric_expression} AS metric\n"
+        "WITH item,\n"
+        "  (CASE WHEN confidence < 0 THEN 0.0 WHEN confidence > 1 THEN 1.0 ELSE confidence END) *\n"
+        "  (CASE WHEN metric < 0 THEN 0.0 WHEN metric > 1 THEN 1.0 ELSE metric END) AS attribute_score\n"
+        "WHERE attribute_score >= $min_confidence\n"
         "AND ($item_type_codes = [] OR EXISTS {\n"
         "  MATCH (item)-[:IS_CATEGORY]->(category:Category)\n"
         "  WHERE category.id IN $item_type_codes\n"
         "})\n"
         "RETURN item.id AS id\n"
-        "ORDER BY coalesce(edge.confidence, 0.0) DESC, item.id ASC\n"
+        "ORDER BY attribute_score DESC, item.id ASC\n"
         "LIMIT $pool_size"
     )
     return cypher, value_id
@@ -176,7 +195,7 @@ def attribute_matches(
         return False
     confidence = _number(attribute.get("confidence"))
     return min_confidence is None or (
-        confidence is not None and confidence >= min_confidence
+        confidence is not None and attribute_strength(attribute) >= min_confidence
     )
 
 
@@ -206,17 +225,12 @@ def attribute_strength(attribute: dict[str, Any]) -> float:
     confidence = _number(attribute.get("confidence"))
     if confidence is None:
         return 0.0
-    group = attribute.get("group")
-    metric_name = (
-        "coverage" if group == "colors" else
-        "prominence" if group == "patterns" or attribute.get("scope") == "category" else
-        "strength" if group == "seasons" else None
-    )
+    metric_name = _attribute_metric_name(attribute)
     metric = _number(attribute.get(metric_name)) if metric_name else None
     confidence = max(0.0, min(1.0, confidence))
     if metric is None:
         return confidence
-    return confidence * (0.5 + 0.5 * max(0.0, min(1.0, metric)))
+    return confidence * max(0.0, min(1.0, metric))
 
 
 def graph_score(

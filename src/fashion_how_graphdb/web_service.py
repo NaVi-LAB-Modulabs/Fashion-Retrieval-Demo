@@ -127,7 +127,7 @@ def validate_request(payload: dict[str, Any]) -> dict[str, Any]:
             isinstance(value, bool) or not isinstance(value, (int, float))
             or not math.isfinite(value) or not 0 <= value <= 1
         ):
-            raise ValueError("Score and edge confidence must be between 0 and 1.")
+            raise ValueError("Final score and attribute match threshold must be between 0 and 1.")
         values[name] = value
     weights = payload.get("weights", hybrid_search.DEFAULT_WEIGHTS)
     if not isinstance(weights, dict) or set(weights) != set(hybrid_search.DEFAULT_WEIGHTS):

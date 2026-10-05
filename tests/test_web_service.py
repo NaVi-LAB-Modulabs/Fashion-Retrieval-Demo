@@ -95,6 +95,19 @@ class RetrievalTests(unittest.TestCase):
         self.assertAlmostEqual(result["items"][0]["score"], .35 * .6 + .55 + .1, places=6)
         self.assertEqual(result["items"][0]["score_components"], ["graph", "text", "style"])
 
+    def test_attribute_threshold_filters_high_confidence_low_coverage(self):
+        result, _, _ = self.run_search([
+            {"id": "accent", "text_score": .99,
+             "mapped_attributes": [{"scope": "common", "group": "colors", "value": "blue",
+                                    "confidence": .96, "coverage": .08}]},
+            {"id": "main-color", "text_score": .7,
+             "mapped_attributes": [{"scope": "common", "group": "colors", "value": "blue",
+                                    "confidence": .9, "coverage": .8}]},
+        ], min_confidence=.1)
+        self.assertEqual([item["id"] for item in result["items"]], ["main-color"])
+        self.assertEqual(result["items"][0]["graph_score"], .72)
+        self.assertEqual(result["items"][0]["matched_filters"][0]["score"], .72)
+
     def test_search_weights_change_order_and_zero_weight_disables_component(self):
         rows = [
             {"id": "text-first", "text_score": .95,

@@ -119,7 +119,9 @@ For every positive common or category filter, set hard=true when the user
 directly names that attribute. "White jacket" requires a white color edge;
 "floral dress" requires a floral pattern edge. Explicit words such as "must"
 or "only" are not necessary. Inferred attributes have hard=false. A hard
-filter excludes items without a sufficiently confident matching graph edge.
+filter excludes items without a matching graph edge meeting the configured
+attribute match threshold (confidence times coverage, prominence, or season
+score; confidence alone when no metric is available).
 Do not invent values.
 
 Place explicit negative attributes such as "not white" in excluded filters.
@@ -508,7 +510,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", default=default_model())
     parser.add_argument("--embedding_model", default=DEFAULT_EMBEDDING_MODEL)
     parser.add_argument("--limit", type=int, default=20)
-    parser.add_argument("--min_confidence", type=float, default=None)
+    parser.add_argument(
+        "--min_confidence", type=float, default=None,
+        help="Minimum attribute match score (confidence * metric; confidence if no metric).",
+    )
     parser.add_argument("--min_score", type=float, default=None)
     parser.add_argument("--neo4j_uri", default=DEFAULT_NEO4J_URI)
     parser.add_argument("--neo4j_user", default=DEFAULT_NEO4J_USER)

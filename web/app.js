@@ -92,7 +92,7 @@ function renderItems() {
   $("empty-state").querySelector("h3").textContent = !ranked && !items.length ? "No preview images" : "No matching items";
   $("empty-state").querySelector("p").textContent = !ranked && !items.length
     ? "No preview images are available. You can still search a configured catalog and inspect its retrieval evidence."
-    : "Try fewer constraints or lower the minimum score and edge confidence in Search settings.";
+    : "Try fewer constraints or lower the minimum score and attribute match threshold in Search settings.";
   applyView();
 }
 
@@ -179,7 +179,7 @@ function renderInsights() {
   $("parameter-list").innerHTML = `<dl>${Object.entries(run.params).map(([key, value]) => `<div class="parameter-row"><dt>$${escapeHTML(key)}</dt><dd>${escapeHTML(JSON.stringify(value))}</dd></div>`).join("")}</dl>`;
   $("extraction-code").textContent = JSON.stringify(extracted, null, 2);
   const settings = run.settings;
-  $("run-summary").textContent = `Parser: ${settings.model} · Results: ${settings.limit} · Min. score: ${settings.min_score ?? "off"} · Min. edge confidence: ${settings.min_confidence ?? "off"} · Weights: ${effectiveWeightLabel(settings.weights || {text: .55, graph: .35, style: .10})}. ${run.reranked ? "Weighted reranking applied." : "Graph ranking only."}`;
+  $("run-summary").textContent = `Parser: ${settings.model} · Results: ${settings.limit} · Min. score: ${settings.min_score ?? "off"} · Min. attribute match: ${settings.min_confidence ?? "off"} · Weights: ${effectiveWeightLabel(settings.weights || {text: .55, graph: .35, style: .10})}. ${run.reranked ? "Weighted reranking applied." : "Graph ranking only."}`;
   $("run-state").textContent = state.lastAttemptFailed ? "Previous run" : "Completed";
   $("parse-time").textContent = `${run.timings.parse_ms} ms`;
   $("graph-time").textContent = `${run.timings.graph_ms} ms`;
