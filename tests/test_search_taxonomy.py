@@ -25,9 +25,9 @@ class Fashion200KSearchTests(unittest.TestCase):
     def test_extraction_to_cypher_keeps_english_ids_and_exclusions(self):
         raw = {
             "item_type_codes": ["pants"],
-            "common_filters": [{"group": "colors", "value": "navy"}],
+            "common_filters": [{"group": "colors", "value": "navy", "hard": True}],
             "category_filters": [{"type_code": "pants", "group": "pants_fit",
-                                  "value": "wide_leg"}],
+                                  "value": "wide_leg", "hard": True}],
             "excluded_common_filters": [{"group": "materials", "value": "denim"}],
             "excluded_category_filters": [{"type_code": "pants", "group": "pants_rise",
                                            "value": "low_rise"}],
@@ -48,7 +48,7 @@ class Fashion200KSearchTests(unittest.TestCase):
                 self.assertNotIn("IS_TYPE", cypher)
                 self.assertEqual(extraction["item_type_codes"], ["pants"])
                 self.assertEqual(
-                    hybrid_search.attribute_candidate_cypher(extraction["category_filters"][0])[1],
+                    hybrid_search.candidate_cypher(extraction)[1]["required_1"],
                     "pants_fit:wide_leg",
                 )
 

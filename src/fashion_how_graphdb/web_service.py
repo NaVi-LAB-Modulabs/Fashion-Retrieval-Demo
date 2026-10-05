@@ -176,9 +176,12 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
             weights=request["weights"],
         )
     params = {
+        **hybrid_search.candidate_cypher(extraction)[1],
         "candidate_ids": candidate_ids,
         "item_type_codes": query_params["item_type_codes"],
-        "vector_index": hybrid_search.VECTOR_INDEX_NAME,
+        "candidate_branch_limit": hybrid_search.CANDIDATE_BRANCH_SIZE,
+        "vector_index": hybrid_search.DESCRIPTION_VECTOR_INDEX,
+        "filtered_ids": "<all hard-filtered IDs with matching embedding model; omitted>",
         "embedding_model": search.DEFAULT_EMBEDDING_MODEL,
         "query_embedding": f"<{len(embedding)} dimensions; omitted from response>",
         "min_confidence": request["min_confidence"],
@@ -202,6 +205,8 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "query": request["query"], "settings": request, "items": results,
         "extraction": extraction, "cypher": cypher, "params": params,
+        "candidate_cypher": hybrid_search.candidate_cypher(extraction)[0],
+        "description_candidate_cypher": hybrid_search.description_candidate_cypher(),
         "candidate_count": len(raw_results), "result_count": len(results),
         "reranked": True, "embedding_model": search.DEFAULT_EMBEDDING_MODEL,
         "timings": {"parse_ms": round((parsed - started) * 1000),

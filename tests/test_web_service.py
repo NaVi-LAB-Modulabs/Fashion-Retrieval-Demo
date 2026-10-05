@@ -35,11 +35,19 @@ class RetrievalTests(unittest.TestCase):
         driver = MagicMock()
         session = driver.session.return_value.__enter__.return_value
         def run_query(cypher, **params):
-            if "db.index.vector.queryNodes" in cypher:
-                return [{"id": row["id"], "score": row.get("text_score", 0.0)} for row in rows]
-            if "RETURN item.id AS id" in cypher:
-                return [{"id": row["id"]} for row in rows]
-            return [{"result": row} for row in rows]
+            if "AS description_eligible" in cypher:
+                extraction = service.search.normalize_extraction(self.extraction)
+                eligible = [row for row in rows if service.hybrid_search.passes_hard_filters(
+                    row.get("mapped_attributes") or [], extraction, params["min_confidence"],
+                )]
+                return [{"id": row["id"], "graph_score": service.hybrid_search.graph_score(
+                    row.get("mapped_attributes") or [], extraction, params["min_confidence"],
+                )[0], "description_eligible": row.get("text_score") is not None} for row in eligible]
+            if "SEARCH item IN" in cypher:
+                text = sorted([row for row in rows if row["id"] in params["filtered_ids"]],
+                              key=lambda row: (-row["text_score"], row["id"]))[:params["branch_limit"]]
+                return [{"id": row["id"], "text_score": row["text_score"]} for row in text]
+            return [{"result": row} for row in rows if row["id"] in params["candidate_ids"]]
         session.run.side_effect = run_query
         client = MagicMock()
         client.embeddings.create.return_value = SimpleNamespace(data=[SimpleNamespace(embedding=[1.0, 0.0])])
@@ -75,9 +83,9 @@ class RetrievalTests(unittest.TestCase):
         self.assertIn("$query_embedding", result["cypher"])
         self.assertIn("MATCH", result["cypher"])
         self.assertEqual(session.run.call_args.kwargs["candidate_ids"], ["51727804_0"])
-        client.embeddings.create.assert_called_once()
+        client.embeddings.create.assert_not_called()
 
-    def test_soft_reranking_uses_larger_pool_then_final_threshold(self):
+    def test_candidates_are_hard_filtered_before_final_score_threshold(self):
         self.extraction["description_query"] = "soft blue"
         self.extraction["style_axis_targets"] = [{"axis": "casual_formal", "target": .2, "evidence": "casual"}]
         result, session, _ = self.run_search([
@@ -90,7 +98,7 @@ class RetrievalTests(unittest.TestCase):
             {"id": "missing-image", "text_score": .8, "mapped_attributes": []},
         ], limit=6, min_score=.75)
         self.assertEqual(result["params"]["min_score"], .75)
-        self.assertEqual(result["candidate_count"], 3)
+        self.assertEqual(result["candidate_count"], 2)
         self.assertEqual(result["result_count"], 1)
         self.assertAlmostEqual(result["items"][0]["score"], .35 * .6 + .55 + .1, places=6)
         self.assertEqual(result["items"][0]["score_components"], ["graph", "text", "style"])
@@ -127,11 +135,36 @@ class RetrievalTests(unittest.TestCase):
         self.assertEqual(text_only["items"][0]["score_components"], ["text"])
         self.assertEqual(text_only["items"][0]["score"], .95)
 
+    def test_top_ten_lists_are_combined_before_final_weighted_sort(self):
+        rows = [
+            {"id": f"item-{index:02d}", "text_score": (index + 1) / 30,
+             "mapped_attributes": [{"scope": "common", "group": "colors", "value": "blue",
+                                    "confidence": 1 - index / 30}]}
+            for index in range(25)
+        ]
+        result, session, _ = self.run_search(
+            rows, limit=20, weights={"text": 0, "graph": 1, "style": 0},
+        )
+        expected = [f"item-{index:02d}" for index in [*range(10), *range(15, 25)]]
+        self.assertEqual([item["id"] for item in result["items"]], expected)
+        self.assertEqual(result["candidate_count"], 20)
+        self.assertEqual(result["params"]["branch_limit"], 10)
+        self.assertNotIn("vector.similarity.cosine", result["candidate_cypher"])
+        self.assertIn("SEARCH item IN", result["description_candidate_cypher"])
+        self.assertEqual(len(session.run.call_args_list[1].kwargs["filtered_ids"]), 25)
+        self.assertIsInstance(result["params"]["filtered_ids"], str)
+
+        self.extraction["common_filters"] = []
+        text_only, _, _ = self.run_search(rows, limit=20, weights={"text": 1, "graph": 0, "style": 0})
+        self.assertEqual([item["id"] for item in text_only["items"]],
+                         [f"item-{index:02d}" for index in range(24, 14, -1)])
+        self.assertEqual(text_only["candidate_count"], 10)
+
     def test_only_saved_sample_ids_have_image_urls(self):
         self.extraction["common_filters"] = []
         result, _, _ = self.run_search([
-            {"id": "51727804_0", "score": .8},
-            {"id": "graph-id", "item_ID": "hf-id", "score": .7},
+            {"id": "51727804_0", "text_score": .8},
+            {"id": "graph-id", "item_ID": "hf-id", "text_score": .7},
         ])
         self.assertEqual([item["image_id"] for item in result["items"]], ["51727804_0", "hf-id"])
         self.assertEqual([item["image_url"] for item in result["items"]], [None, None])
@@ -139,7 +172,7 @@ class RetrievalTests(unittest.TestCase):
     def test_fashion200k_category_properties_supply_display_type(self):
         self.extraction["common_filters"] = []
         result, _, _ = self.run_search([
-            {"id": "51727804_0", "category": "tops", "category_name": "tops", "score": .8},
+            {"id": "51727804_0", "category": "tops", "category_name": "tops", "text_score": .8},
         ])
         self.assertEqual(result["items"][0]["type_code"], "tops")
         self.assertEqual(result["items"][0]["type_name"], "tops")

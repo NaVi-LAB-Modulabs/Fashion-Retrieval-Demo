@@ -119,6 +119,18 @@ function axisMarkup(target, itemValue) {
 }
 
 // Highlight tokens after escaping every non-token segment; copied/exported text stays exact.
+function searchCypher(run) {
+  if (!run.candidate_cypher) return run.cypher;
+  const queries = [
+    `// Hard filters and attribute scores (attribute top 10 selected from these rows)\n${run.candidate_cypher};`,
+  ];
+  if (run.description_candidate_cypher) {
+    queries.push(`// Description top 10 within filtered IDs\n${run.description_candidate_cypher};`);
+  }
+  queries.push(`// Candidate evidence and exact description scores\n${run.cypher};`);
+  return queries.join("\n\n");
+}
+
 function highlightCypher(query) {
   const tokens = /('(?:[^'\\]|\\.)*'|\$[A-Za-z_][A-Za-z_0-9]*|\b(?:OPTIONAL|MATCH|WHERE|WITH|RETURN|ORDER|BY|DESC|ASC|LIMIT|CALL|AS|AND|OR|NOT|EXISTS|IN|CASE|WHEN|THEN|ELSE|END|IS|NULL|DISTINCT)\b)/g;
   let rendered = "", offset = 0;
@@ -172,7 +184,7 @@ function renderInsights() {
     <div class="insight-section"><h3 class="insight-label">Excluded attributes (${excluded.length})</h3>${excluded.length ? tags(excluded, true) : '<p class="muted">None extracted</p>'}</div>
     <div class="insight-section"><h3 class="insight-label">Semantic description</h3><p${extracted.description_query ? "" : ' class="muted"'}>${escapeHTML(extracted.description_query || "Not requested")}</p></div>
     <div class="insight-section"><h3 class="insight-label">Style targets (${axes.length})</h3>${axes.length ? axes.map((t) => axisMarkup(t)).join("") : '<p class="muted">Not requested</p>'}</div>`;
-  $("cypher-code").innerHTML = highlightCypher(run.cypher);
+  $("cypher-code").innerHTML = highlightCypher(searchCypher(run));
   $("cypher-code").parentElement.classList.remove("empty-code");
   $("query-state").textContent = state.lastAttemptFailed ? "Previous run · candidate query" : "Candidate query";
   $("params-code").textContent = JSON.stringify(run.params, null, 2);
@@ -322,7 +334,7 @@ async function copyRunText(buttonId, codeId, text) {
   setTimeout(() => { button.textContent = originalLabel; }, 2500);
 }
 $("copy-cypher").addEventListener("click", () => {
-  if (state.run && !state.busy) copyRunText("copy-cypher", "cypher-code", state.run.cypher);
+  if (state.run && !state.busy) copyRunText("copy-cypher", "cypher-code", searchCypher(state.run));
 });
 $("copy-params").addEventListener("click", () => {
   if (state.run && !state.busy) copyRunText("copy-params", "params-code", JSON.stringify(state.run.params, null, 2));
@@ -332,7 +344,7 @@ $("wrap-cypher").addEventListener("change", () => {
 });
 $("expand-cypher").addEventListener("click", () => {
   if (!state.run || state.busy) return;
-  $("expanded-cypher-code").innerHTML = highlightCypher(state.run.cypher);
+  $("expanded-cypher-code").innerHTML = highlightCypher(searchCypher(state.run));
   $("cypher-dialog").showModal();
 });
 $("export-run").addEventListener("click", () => {

@@ -97,7 +97,6 @@ Optional:
 NEO4J_DATABASE
 OPENAI_MODEL
 OPENAI_EMBEDDING_MODEL
-NEO4J_DESCRIPTION_VECTOR_INDEX
 ```
 
 ## Fashion200K sample images
@@ -142,9 +141,13 @@ and graph import are handled by the separate Fashion-Retrieval project.
 Search uses `(Item)-[:IS_CATEGORY]->(Category)` and the English taxonomy IDs.
 The query parser identifies the category, positive and excluded graph attributes,
 directly named attributes, a positive visual description, and requested
-style axes. Vector search over `description_embedding` and graph attribute
-matches produce separate candidate pools; IDs are merged before hard filtering.
-Category limits candidate selection when mentioned. Directly named positive
+style axes. Category, required attribute and excluded attribute filters run
+before candidate selection. Within the filtered items, two independent lists
+are selected: the top 10 by the combined graph attribute score and the top 10 by
+description similarity using filtered HNSW. Their IDs are merged and deduplicated, giving at most
+20 candidates for final scoring. With no required attributes, only the description
+list is used. The final result limit does not enlarge either candidate list.
+Directly named positive
 attributes such as "white" in "white jacket" require a matching graph edge;
 the same required attributes supply graph candidates and the attribute score.
 Inferred attributes stay in the parsed output but do not affect graph candidates
@@ -165,6 +168,19 @@ the effective split as values change; each search sends its chosen weights to
 the API. At least one weight must be above zero, and unavailable or zero-weight
 score components are omitted before the remaining weights are normalized.
 
+### Retrieval flow
+
+![Retrieval flow: hard filters, attribute top 10 and filtered HNSW top 10, candidate union, and final weighted ranking](web/search-flow.svg)
+
+[Download the PNG diagram](web/search-flow.png). Both branches use the entire
+hard-filtered population; the description branch additionally requires a matching
+embedding model. Style targets affect final scoring only.
+To regenerate the SVG and PNG with matplotlib installed:
+
+```cmd
+python scripts\render_search_flow.py
+```
+
 ## Neo4j Item Properties
 
 For Fashion200K images, each `Item` should preserve the Hugging Face `item_ID`
@@ -172,12 +188,23 @@ as `id` (or supply a separate `item_ID` property). Only IDs in `sample_ids.json`
 with saved image files receive an image URL.
 
 Live search requires `Item.description_embedding` with 3,072 dimensions,
-`Item.description_embedding_model` set to `text-embedding-3-large`, and an existing
-Neo4j vector index named `item_description_embedding` over that property.
+`Item.description_embedding_model` set to `text-embedding-3-large`.
 The query embedding must use the same model and dimensions as stored items.
-Set `OPENAI_EMBEDDING_MODEL` if the indexed item vectors use another model;
-set `NEO4J_DESCRIPTION_VECTOR_INDEX` if the index has another name. This app
-queries the existing index and does not create it.
+Set `OPENAI_EMBEDDING_MODEL` if the stored item vectors use another model.
+Description selection uses Cypher 25 `SEARCH` against the existing online
+`item_description_embedding_filtered` vector index. It must index
+`description_embedding` and include `id` as an additional filter property,
+with support for `WHERE item.id IN $filtered_ids` inside `SEARCH` (Neo4j 2026.06+
+or a compatible Aura release). Set `NEO4J_DESCRIPTION_VECTOR_INDEX` to override
+the index name. The graph query first collects all IDs that pass the hard filters
+and calculates their attribute scores. HNSW then searches within eligible IDs
+whose embedding model matches the query model, returning up to 10 approximate
+neighbors. The full eligible ID list is not truncated to the attribute top 10.
+Exact `vector.similarity.cosine` is computed only for the combined candidates
+(at most 20) before final reranking. The graph filtering and ID transfer still
+depend on the size of the eligible population. Search does not create indexes
+or modify items; an unsupported SEARCH clause or missing index raises an error
+instead of silently switching to an exhaustive vector scan.
 
 ```text
 description_embedding

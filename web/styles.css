@@ -193,6 +193,10 @@ dialog::backdrop { background: #26313677; }
 .attribute-entry strong { font: 11px var(--mono); }
 #method-dialog { max-width: 690px; padding: 38px; }
 #method-dialog h2 { font: 28px Georgia, serif; margin: 14px 0 22px; }
+.method-flow { margin: 0 0 24px; }
+.method-flow img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 8px; }
+.method-flow figcaption { margin-top: 8px; font-size: 11px; line-height: 1.6; color: var(--muted); }
+.method-flow a { color: var(--accent); }
 .method-list { padding-left: 20px; }
 .method-list li { margin: 20px 0; padding-left: 8px; }
 .method-list li::marker { color: var(--accent); font-family: var(--mono); }

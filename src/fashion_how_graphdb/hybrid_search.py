@@ -2,31 +2,21 @@
 
 from __future__ import annotations
 
+import heapq
 import os
 from typing import Any
 
 from . import search
 from .category_taxonomy import category_attribute_id
 
-VECTOR_INDEX_NAME = os.getenv("NEO4J_DESCRIPTION_VECTOR_INDEX", "item_description_embedding")
-VECTOR_POOL_SIZE = 500
-ATTRIBUTE_POOL_SIZE = 150
+CANDIDATE_BRANCH_SIZE = 10
+DESCRIPTION_VECTOR_INDEX = (
+    os.getenv("NEO4J_DESCRIPTION_VECTOR_INDEX") or "item_description_embedding_filtered"
+).strip()
 TEXT_WEIGHT = 0.55
 ATTRIBUTE_WEIGHT = 0.35
 STYLE_WEIGHT = 0.10
 DEFAULT_WEIGHTS = {"text": TEXT_WEIGHT, "graph": ATTRIBUTE_WEIGHT, "style": STYLE_WEIGHT}
-
-VECTOR_CYPHER = """
-CALL db.index.vector.queryNodes($index_name, $pool_size, $query_embedding)
-YIELD node, score
-WHERE node.description_embedding_model = $embedding_model
-  AND ($item_type_codes = [] OR EXISTS {
-    MATCH (node)-[:IS_CATEGORY]->(category:Category)
-    WHERE category.id IN $item_type_codes
-  })
-RETURN node.id AS id, score
-"""
-
 
 def query_embedding(client: Any, text: str, model: str) -> list[float]:
     response = client.embeddings.create(model=model, input=text)
@@ -42,7 +32,7 @@ def _attribute_metric_name(attribute: dict[str, Any]) -> str | None:
     )
 
 
-def attribute_candidate_cypher(search_filter: dict[str, Any]) -> tuple[str, str]:
+def _attribute_spec(search_filter: dict[str, Any]) -> tuple[str, str, str]:
     if search_filter["scope"] == "common":
         spec = search.COMMON_FILTER_GROUPS[search_filter["group"]]
         relation, label = spec["rel_type"], spec["node_label"]
@@ -50,28 +40,20 @@ def attribute_candidate_cypher(search_filter: dict[str, Any]) -> tuple[str, str]
     else:
         relation, label = "HAS_ATTRIBUTE", "Attribute"
         value_id = category_attribute_id(search_filter["group"], search_filter["value"])
+    return relation, label, value_id
+
+
+def _edge_strength_expression(edge: str, search_filter: dict[str, Any]) -> str:
     metric_name = _attribute_metric_name(search_filter)
     edge_property = "score" if metric_name == "strength" else metric_name
-    metric_expression = (
-        f"coalesce(toFloat(edge.{edge_property}), 1.0)" if edge_property else "1.0"
-    )
-    cypher = (
-        f"MATCH (item:Item)-[edge:{relation}]->(:{label} {{id: $value_id}})\n"
-        "WITH item, coalesce(toFloat(edge.confidence), 0.0) AS confidence,\n"
-        f"  {metric_expression} AS metric\n"
-        "WITH item,\n"
-        "  (CASE WHEN confidence < 0 THEN 0.0 WHEN confidence > 1 THEN 1.0 ELSE confidence END) *\n"
-        "  (CASE WHEN metric < 0 THEN 0.0 WHEN metric > 1 THEN 1.0 ELSE metric END) AS attribute_score\n"
-        "WHERE attribute_score >= $min_confidence\n"
-        "AND ($item_type_codes = [] OR EXISTS {\n"
-        "  MATCH (item)-[:IS_CATEGORY]->(category:Category)\n"
-        "  WHERE category.id IN $item_type_codes\n"
-        "})\n"
-        "RETURN item.id AS id\n"
-        "ORDER BY attribute_score DESC, item.id ASC\n"
-        "LIMIT $pool_size"
-    )
-    return cypher, value_id
+    confidence = f"coalesce(toFloat({edge}.confidence), 0.0)"
+    metric = f"coalesce(toFloat({edge}.{edge_property}), 1.0)" if edge_property else "1.0"
+
+    def clamp(expression: str) -> str:
+        return (f"(CASE WHEN {expression} < 0 THEN 0.0 "
+                f"WHEN {expression} > 1 THEN 1.0 ELSE {expression} END)")
+
+    return f"{clamp(confidence)} * {clamp(metric)}"
 
 
 def required_attribute_filters(extraction: dict[str, Any]) -> list[dict[str, Any]]:
@@ -85,6 +67,98 @@ def required_attribute_filters(extraction: dict[str, Any]) -> list[dict[str, Any
     ]
 
 
+def candidate_cypher(extraction: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    """Return all eligible IDs and attribute scores before filtered ANN search."""
+    params: dict[str, Any] = {
+        "item_type_codes": extraction.get("item_type_codes") or [],
+        "branch_limit": CANDIDATE_BRANCH_SIZE,
+    }
+    conditions = [
+        "EXISTS { MATCH (item)-[:IS_CATEGORY]->(category:Category) "
+        "WHERE $item_type_codes = [] OR category.id IN $item_type_codes }",
+    ]
+
+    def edge_condition(search_filter: dict[str, Any], edge: str, node: str, key: str) -> str:
+        strength = _edge_strength_expression(edge, search_filter)
+        clauses = [
+            f"($min_confidence IS NULL OR (toFloat({edge}.confidence) IS NOT NULL "
+            f"AND {strength} >= $min_confidence))",
+        ]
+        if search_filter["scope"] == "category":
+            params[f"{key}_type"] = search_filter["type_code"]
+            clauses.append(f"coalesce({node}.type_code, {node}.category) = ${key}_type")
+        return " AND ".join(clauses)
+
+    excluded = [
+        *(extraction.get("excluded_common_filters") or []),
+        *(extraction.get("excluded_category_filters") or []),
+    ]
+    for index, search_filter in enumerate(excluded):
+        relation, label, value_id = _attribute_spec(search_filter)
+        key, edge, node = f"excluded_{index}", f"excluded_edge_{index}", f"excluded_node_{index}"
+        params[key] = value_id
+        condition = edge_condition(search_filter, edge, node, key)
+        conditions.append(
+            f"NOT EXISTS {{ MATCH (item)-[{edge}:{relation}]->({node}:{label} {{id: ${key}}}) "
+            f"WHERE {condition} }}"
+        )
+    lines = ["MATCH (item:Item)", "WHERE " + "\n  AND ".join(conditions)]
+    required = required_attribute_filters(extraction)
+    score_variables = []
+    filter_weights = []
+    for index, search_filter in enumerate(required):
+        relation, label, value_id = _attribute_spec(search_filter)
+        key, edge, node = f"required_{index}", f"required_edge_{index}", f"required_node_{index}"
+        params[key] = value_id
+        condition = edge_condition(search_filter, edge, node, key)
+        strength = _edge_strength_expression(edge, search_filter)
+        score_variable = f"attribute_score_{index}"
+        # Aggregate before the next match so duplicate edges cannot multiply scores.
+        lines.extend([
+            f"MATCH (item)-[{edge}:{relation}]->({node}:{label} {{id: ${key}}})",
+            f"WHERE {condition}",
+            "WITH item, " + ", ".join([
+                *score_variables, f"max({strength}) AS {score_variable}",
+            ]),
+        ])
+        score_variables.append(score_variable)
+        filter_weights.append(_attribute_weight(search_filter))
+    if required:
+        numerator = " + ".join(
+            f"{weight} * {variable}" for weight, variable in zip(filter_weights, score_variables)
+        )
+        lines.append(f"WITH item, ({numerator}) / {sum(filter_weights)} AS graph_score")
+    else:
+        lines.append("WITH item, null AS graph_score")
+    lines.extend([
+        "RETURN item.id AS id, graph_score,",
+        "  coalesce(item.description_embedding_model = $embedding_model",
+        "    AND item.description_embedding IS NOT NULL, false) AS description_eligible",
+    ])
+    return "\n".join(lines), params
+
+
+def description_candidate_cypher() -> str:
+    # SEARCH requires a literal index identifier; quote environment configuration.
+    index = DESCRIPTION_VECTOR_INDEX.replace("`", "``")
+    return (
+        "CYPHER 25\n"
+        "MATCH (item:Item)\n"
+        "  SEARCH item IN (\n"
+        f"    VECTOR INDEX `{index}`\n"
+        "    FOR $query_embedding\n"
+        "    WHERE item.id IN $filtered_ids\n"
+        "    LIMIT $branch_limit\n"
+        "  ) SCORE AS text_score\n"
+        "RETURN item.id AS id, text_score\n"
+        "ORDER BY text_score DESC, id ASC"
+    )
+
+
+def _attribute_weight(search_filter: dict[str, Any]) -> float:
+    return {"materials": 0.5, "seasons": 0.3}.get(search_filter["group"], 1.0)
+
+
 def select_candidates(
     session: Any,
     extraction: dict[str, Any],
@@ -95,28 +169,29 @@ def select_candidates(
     limit: int,
     min_confidence: float | None,
 ) -> tuple[list[str], list[float]]:
-    # description_query keeps visual terms not represented by graph attributes.
+    cypher, params = candidate_cypher(extraction)
+    rows = list(session.run(cypher, **params, embedding_model=embedding_model,
+                            min_confidence=min_confidence))
+    if not rows:
+        return [], []
+    graph_rows = heapq.nsmallest(
+        CANDIDATE_BRANCH_SIZE,
+        (row for row in rows if row["graph_score"] is not None),
+        key=lambda row: (-float(row["graph_score"]), str(row["id"])),
+    )
+    ids = [row["id"] for row in graph_rows]
+    # Pass the entire filtered population, never just the attribute top 10.
+    filtered_ids = list(dict.fromkeys(row["id"] for row in rows if row["description_eligible"]))
+    if not filtered_ids:
+        return list(dict.fromkeys(ids)), []
     semantic_query = search._normalize_description_query(extraction.get("description_query")) or query
     embedding = query_embedding(client, semantic_query, embedding_model)
-    vector_rows = session.run(
-        VECTOR_CYPHER,
-        index_name=VECTOR_INDEX_NAME,
-        pool_size=max(VECTOR_POOL_SIZE, limit * 30),
-        query_embedding=embedding,
-        embedding_model=embedding_model,
-        item_type_codes=extraction.get("item_type_codes") or [],
+    allowed_ids = set(filtered_ids)
+    text_rows = session.run(
+        description_candidate_cypher(), filtered_ids=filtered_ids,
+        query_embedding=embedding, branch_limit=CANDIDATE_BRANCH_SIZE,
     )
-    ids = [row["id"] for row in vector_rows]
-    for search_filter in required_attribute_filters(extraction):
-        cypher, value_id = attribute_candidate_cypher(search_filter)
-        rows = session.run(
-            cypher,
-            value_id=value_id,
-            item_type_codes=extraction.get("item_type_codes") or [],
-            min_confidence=min_confidence or 0.0,
-            pool_size=max(ATTRIBUTE_POOL_SIZE, limit * 5),
-        )
-        ids.extend(row["id"] for row in rows)
+    ids.extend(row["id"] for row in text_rows if row["id"] in allowed_ids)
     return list(dict.fromkeys(ids)), embedding
 
 
@@ -241,12 +316,11 @@ def graph_score(
     filters = required_attribute_filters(extraction)
     if not filters:
         return None, []
-    weights = {"materials": 0.5, "seasons": 0.3}
     total = 0.0
     denominator = 0.0
     matches = []
     for search_filter in filters:
-        weight = weights.get(search_filter["group"], 1.0)
+        weight = _attribute_weight(search_filter)
         denominator += weight
         found = [
             attribute for attribute in attributes
@@ -374,10 +448,16 @@ def retrieve_parsed(
     )
     return {
         "cypher": cypher,
+        "candidate_cypher": candidate_cypher(extraction)[0],
+        "description_candidate_cypher": description_candidate_cypher(),
         "params": {
+            **candidate_cypher(extraction)[1],
             "candidate_ids": candidate_ids,
             "item_type_codes": params["item_type_codes"],
-            "vector_index": VECTOR_INDEX_NAME,
+            "candidate_branch_limit": CANDIDATE_BRANCH_SIZE,
+            "branch_limit": CANDIDATE_BRANCH_SIZE,
+            "vector_index": DESCRIPTION_VECTOR_INDEX,
+            "filtered_ids": "<all hard-filtered IDs with matching embedding model; omitted>",
             "embedding_model": embedding_model,
             "query_embedding": f"<{len(embedding)} dimensions>",
             "min_confidence": min_confidence,

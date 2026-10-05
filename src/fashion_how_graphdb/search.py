@@ -492,6 +492,8 @@ def run_search(
         "query": query,
         "extraction": extraction,
         "cypher": retrieval["cypher"],
+        "candidate_cypher": retrieval["candidate_cypher"],
+        "description_candidate_cypher": retrieval["description_candidate_cypher"],
         "params": retrieval["params"],
         "candidate_count": retrieval["candidate_count"],
         "results": retrieval["items"],
@@ -592,9 +594,10 @@ def main() -> None:
             json.dumps(
                 {
                     "extraction": extraction,
-                    "vector_cypher": hybrid_search.VECTOR_CYPHER,
+                    "candidate_cypher": hybrid_search.candidate_cypher(extraction)[0],
+                    "candidate_params": hybrid_search.candidate_cypher(extraction)[1],
+                    "description_candidate_cypher": hybrid_search.description_candidate_cypher(),
                     "result_cypher": hybrid_search.result_cypher(extraction),
-                    "vector_index": hybrid_search.VECTOR_INDEX_NAME,
                 },
                 ensure_ascii=False,
                 indent=2,
