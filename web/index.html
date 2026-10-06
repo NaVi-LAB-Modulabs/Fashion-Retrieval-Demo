@@ -1,54 +1,70 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#f5f3ee">
-  <meta name="description" content="Inspect extracted constraints, generated Cypher and ranked fashion retrieval results.">
-  <title>Fashion Search | Retrieval workspace</title>
+  <meta name="theme-color" content="#f4f4f2" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#111112" media="(prefers-color-scheme: dark)">
+  <meta name="description" content="Search a fashion catalog in plain language and inspect the extracted constraints, generated Cypher and ranking evidence.">
+  <title>Fashion Search</title>
   <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/assets/styles.css">
-  <script src="/assets/app.js?v=20260927-axis-name" defer></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/assets/styles.css?v=20261006-shop">
+  <script src="/assets/app.js?v=20261006-shop" defer></script>
 </head>
 <body>
-  <a class="skip-link" href="#query">Skip to query</a>
+  <a class="skip-link" href="#query">Skip to search</a>
   <header class="site-header">
-    <a class="brand" href="/" aria-label="Fashion Search home">Fashion Search<span>Research demo</span></a>
-    <div class="header-tools"><span id="runtime-label" role="status">Checking server...</span><button type="button" data-open-method>Method &amp; scoring</button></div>
+    <div class="header-inner">
+      <a class="brand" href="/" aria-label="Fashion Search home">Fashion Search<span>Research demo</span></a>
+      <div class="header-tools"><span id="runtime-label" role="status">Checking server...</span><button type="button" class="link-button" data-open-method>Method &amp; scoring</button></div>
+    </div>
   </header>
+
   <main id="explore">
-    <div class="page-heading"><div><h1>Retrieval workspace</h1><p>Query the catalog. Inspect the constraints, candidate query and ranking evidence.</p></div><button type="button" id="export-run" class="export-button" disabled>Export run <span>.json</span></button></div>
-    <section class="search-panel" aria-label="Query and retrieval settings">
-      <form id="search-form">
-        <label for="query" class="field-label">Search query</label>
-        <div class="search-row"><input id="query" name="query" placeholder="A casual blue shirt, not white, for daily wear" maxlength="2000" required autocomplete="off"><button class="search-button" id="search-button" type="submit"><span id="search-button-text">Run retrieval</span><span aria-hidden="true">↵</span></button></div>
-        <div class="search-bottom"><div class="suggestions"><span>Examples</span><button type="button" data-query="A casual blue shirt, not white, for daily wear">Blue shirt, exclude white</button><button type="button" data-query="A romantic floral blouse for a spring date">Floral blouse for spring</button><button type="button" data-query="Minimal black outerwear that feels formal">Minimal, formal outerwear</button></div><button type="button" class="settings-toggle" id="settings-toggle" aria-expanded="true" aria-controls="settings">Hide settings</button></div>
-        <div class="settings" id="settings">
-          <label>Parser model<input id="model" list="model-options" maxlength="100" placeholder="Loading default..."><datalist id="model-options"></datalist></label>
-          <label>Maximum results<select id="limit"><option value="6">6</option><option value="12" selected>12</option><option value="20">20</option></select></label>
-          <label>Min. final score <output for="min-score" id="min-score-value">0.00</output><input type="range" id="min-score" min="0" max="1" step="0.05" value="0"></label>
-          <label>Min. attribute match <output for="min-confidence" id="min-confidence-value">0.00</output><input type="range" id="min-confidence" min="0" max="1" step="0.05" value="0"></label>
-          <details class="weight-settings" id="weight-settings">
-            <summary>Scoring weights <span id="weight-summary">55 : 35 : 10</span></summary>
-            <div class="weight-controls">
-              <label for="weight-text">Description similarity <output for="weight-text" id="weight-text-value">55</output><input type="range" id="weight-text" min="0" max="100" step="1" value="55"></label>
-              <label for="weight-graph">Attribute score <output for="weight-graph" id="weight-graph-value">35</output><input type="range" id="weight-graph" min="0" max="100" step="1" value="35"></label>
-              <label for="weight-style">Style score <output for="weight-style" id="weight-style-value">10</output><input type="range" id="weight-style" min="0" max="100" step="1" value="10"></label>
+    <section class="hero" aria-label="Search">
+      <div class="page-heading">
+        <h1>Search fashion the way you describe it.</h1>
+        <p>Query the catalog in plain language. Inspect the constraints, candidate query and ranking evidence behind every result.</p>
+      </div>
+      <div class="search-panel">
+        <form id="search-form">
+          <label for="query" class="field-label">Search query</label>
+          <div class="search-row">
+            <input id="query" name="query" placeholder="A casual blue shirt, not white, for daily wear" maxlength="2000" required autocomplete="off">
+            <button type="button" class="settings-toggle" id="settings-toggle" aria-expanded="false" aria-controls="settings">Settings</button>
+            <button class="search-button" id="search-button" type="submit"><span id="search-button-text">Search</span><span class="search-arrow" aria-hidden="true">↵</span></button>
+          </div>
+          <div class="suggestions"><span>Try</span><button type="button" data-query="A casual blue shirt, not white, for daily wear">Blue shirt, exclude white</button><button type="button" data-query="A romantic floral blouse for a spring date">Floral blouse for spring</button><button type="button" data-query="Minimal black outerwear that feels formal">Minimal, formal outerwear</button></div>
+          <div class="settings" id="settings" hidden>
+            <div class="settings-grid">
+              <label>Parser model<input id="model" list="model-options" maxlength="100" placeholder="Loading default..."><datalist id="model-options"></datalist></label>
+              <label>Maximum results<select id="limit"><option value="6">6</option><option value="12" selected>12</option><option value="20">20</option></select></label>
+              <label class="range-label"><span>Min. final score <output for="min-score" id="min-score-value">0.00</output></span><input type="range" id="min-score" min="0" max="1" step="0.05" value="0"></label>
+              <label class="range-label"><span>Min. attribute match <output for="min-confidence" id="min-confidence-value">0.00</output></span><input type="range" id="min-confidence" min="0" max="1" step="0.05" value="0"></label>
             </div>
-            <div class="weight-help"><span id="weight-effective">Effective split: description 55%, attributes 35%, style 10%.</span><button type="button" id="reset-weights">Reset to defaults</button></div>
-            <p>Weights are relative. Available score components are normalized for each item.</p>
-          </details>
-          <p>Settings apply to the next run. Attribute match sets the minimum confidence × metric for each matched attribute; final score filters ranked results.</p>
-        </div>
-      </form>
-      <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+            <details class="weight-settings" id="weight-settings">
+              <summary>Scoring weights <span id="weight-summary">55 : 35 : 10</span></summary>
+              <div class="weight-controls">
+                <label for="weight-text" class="range-label"><span>Description similarity <output for="weight-text" id="weight-text-value">55</output></span><input type="range" id="weight-text" min="0" max="100" step="1" value="55"></label>
+                <label for="weight-graph" class="range-label"><span>Attribute score <output for="weight-graph" id="weight-graph-value">35</output></span><input type="range" id="weight-graph" min="0" max="100" step="1" value="35"></label>
+                <label for="weight-style" class="range-label"><span>Style score <output for="weight-style" id="weight-style-value">10</output></span><input type="range" id="weight-style" min="0" max="100" step="1" value="10"></label>
+              </div>
+              <div class="weight-help"><span id="weight-effective">Effective split: description 55%, attributes 35%, style 10%.</span><button type="button" class="link-button" id="reset-weights">Reset to defaults</button></div>
+              <p>Weights are relative. Available score components are normalized for each item.</p>
+            </details>
+            <p class="settings-note">Settings apply to the next run. Attribute match sets the minimum confidence × metric for each matched attribute; final score filters ranked results.</p>
+          </div>
+        </form>
+        <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+      </div>
     </section>
 
-    <section class="run-strip" aria-label="Execution measurements"><span class="run-state" id="run-state">Not run</span><dl><div><dt>Parsing</dt><dd id="parse-time">—</dd></div><div><dt>Graph query</dt><dd id="graph-time">—</dd></div><div><dt>Reranking</dt><dd id="rerank-time">—</dd></div><div><dt>Candidates fetched</dt><dd id="candidate-count">—</dd></div><div><dt>Total</dt><dd id="total-time">—</dd></div></dl></section>
-
-    <div class="workspace">
+    <div class="shop">
       <aside class="inspector panel" aria-labelledby="inspector-title">
-        <div class="panel-heading"><span class="panel-number">01</span><h2 id="inspector-title">Extracted constraints</h2></div>
+        <h2 id="inspector-title">Extracted constraints</h2>
         <p class="panel-description">Structured output from the query parser.</p>
         <div id="inspector-intro" class="constraint-placeholder">
           <dl><div><dt>Item types</dt><dd>Not extracted</dd></div><div><dt>Mentioned attributes</dt><dd>Not extracted</dd></div><div><dt>Must match</dt><dd>Not extracted</dd></div><div><dt>Excluded attributes</dt><dd>Not extracted</dd></div><div><dt>Semantic description</dt><dd>Not extracted</dd></div><div><dt>Style targets</dt><dd>Not extracted</dd></div></dl>
@@ -58,37 +74,60 @@
         <details class="raw-extraction" id="raw-extraction"><summary>Parser output <span>JSON</span></summary><pre><code id="extraction-code">No parser output yet.</code></pre></details>
       </aside>
 
-      <section class="query-plan panel" id="query-plan" aria-labelledby="query-title">
-        <div class="panel-heading"><span class="panel-number">02</span><h2 id="query-title">Search Cypher</h2></div>
-        <p class="panel-description">Hard filters run before the attribute top 10 and description top 10 are combined. Description candidates use filtered HNSW; the last query fetches candidate evidence. Embedding values and the full filtered ID list are omitted from displayed parameters.</p>
-        <div class="code-toolbar"><span id="query-state">Not executed</span><div class="code-actions"><label><input id="wrap-cypher" type="checkbox" checked> Wrap</label><button type="button" id="expand-cypher" disabled>Expand</button><button type="button" id="copy-cypher" disabled>Copy query</button></div></div>
-        <pre class="cypher-editor" tabindex="0" aria-label="Generated Cypher"><code id="cypher-code">No query has been generated.
-
-Run retrieval to inspect the final candidate query here.</code></pre>
-        <div class="parameter-heading"><h3>Search parameters</h3><button type="button" id="copy-params" disabled>Copy JSON</button></div>
-        <div id="parameter-list" class="parameter-list"><p class="muted">No parameters yet.</p></div>
-        <details class="raw-params"><summary>Parameters <span>JSON</span></summary><pre><code id="params-code">No parameters yet.</code></pre></details>
-        <div class="run-settings"><h3>Executed settings</h3><p id="run-summary">No completed run. Controls above apply to your next search.</p></div>
-      </section>
-
       <section class="results-section panel" aria-labelledby="results-title" aria-busy="false" id="results-section">
-        <div class="panel-heading result-heading"><span class="panel-number">03</span><h2 id="results-title">Catalog preview<span class="count-badge" id="result-count">—</span></h2></div>
-        <div class="results-toolbar"><p id="results-eyebrow">UNRANKED</p><div class="view-switch" role="group" aria-label="Results view"><button type="button" id="grid-view" class="active" aria-pressed="true">Images</button><button type="button" id="table-view" aria-pressed="false">Scores</button></div></div>
+        <div class="results-head">
+          <div>
+            <p id="results-eyebrow" class="results-eyebrow">UNRANKED</p>
+            <h2 id="results-title">Catalog preview<span class="count-badge" id="result-count">-</span></h2>
+          </div>
+          <div class="results-actions">
+            <div class="view-switch" role="group" aria-label="Results view"><button type="button" id="grid-view" class="active" aria-pressed="true">Images</button><button type="button" id="table-view" aria-pressed="false">Scores</button></div>
+            <button type="button" id="export-run" class="export-button" disabled>Export run <span>.json</span></button>
+          </div>
+        </div>
         <p class="results-caption" id="results-caption">Preview images. Run a query to retrieve and rank matching items.</p>
         <div class="results-grid" id="results-grid"></div>
         <div id="ranking-table" class="table-wrap" hidden></div>
-        <div id="empty-state" class="empty-state" hidden><h3>No matching items</h3><p>Try fewer constraints or lower the minimum score and attribute match threshold.</p><button type="button" id="revise-query">Edit query</button></div>
-        <p class="catalog-footnote" id="catalog-footnote">Preview only · No ranking scores.</p>
+        <div id="empty-state" class="empty-state" hidden><h3>No matching items</h3><p>Try fewer constraints or lower the minimum score and attribute match threshold.</p><button type="button" class="ghost-button" id="revise-query">Edit query</button></div>
+        <p class="catalog-footnote" id="catalog-footnote">Preview only. No ranking scores.</p>
       </section>
     </div>
+
+    <section class="evidence" aria-labelledby="evidence-title">
+      <div class="evidence-head">
+        <h2 id="evidence-title">How this search was ranked</h2>
+        <section class="run-strip" aria-label="Execution measurements"><span class="run-state" id="run-state">Not run</span><dl><div><dt>Parsing</dt><dd id="parse-time">-</dd></div><div><dt>Graph query</dt><dd id="graph-time">-</dd></div><div><dt>Reranking</dt><dd id="rerank-time">-</dd></div><div><dt>Candidates fetched</dt><dd id="candidate-count">-</dd></div><div><dt>Total</dt><dd id="total-time">-</dd></div></dl></section>
+      </div>
+
+      <div class="evidence-grid">
+        <section class="query-plan panel" id="query-plan" aria-labelledby="query-title">
+          <h3 id="query-title" class="panel-title">Search Cypher</h3>
+          <p class="panel-description">Hard filters run before the attribute top 10 and description top 10 are combined. Description candidates use filtered HNSW; the last query fetches candidate evidence. Embedding values and the full filtered ID list are omitted from displayed parameters.</p>
+          <div class="code-block">
+            <div class="code-toolbar"><span id="query-state">Not executed</span><div class="code-actions"><label><input id="wrap-cypher" type="checkbox" checked> Wrap</label><button type="button" id="expand-cypher" disabled>Expand</button><button type="button" id="copy-cypher" disabled>Copy query</button></div></div>
+            <pre class="cypher-editor" tabindex="0" aria-label="Generated Cypher"><code id="cypher-code">No query has been generated.
+
+Run retrieval to inspect the final candidate query here.</code></pre>
+          </div>
+        </section>
+
+        <div class="evidence-side">
+          <div class="parameter-heading"><h3 class="panel-title">Search parameters</h3><button type="button" class="link-button" id="copy-params" disabled>Copy JSON</button></div>
+          <div id="parameter-list" class="parameter-list"><p class="muted">No parameters yet.</p></div>
+          <details class="raw-params"><summary>Parameters <span>JSON</span></summary><pre><code id="params-code">No parameters yet.</code></pre></details>
+          <div class="run-settings"><h3 class="panel-title">Executed settings</h3><p id="run-summary">No completed run. Controls above apply to your next search.</p></div>
+        </div>
+      </div>
+    </section>
   </main>
-  <footer class="site-footer"><p>Scoring: weighted mean of available semantic, graph and requested style components. <span>N/A = unavailable or inactive.</span></p><button type="button" data-open-method>Read the scoring method</button></footer>
+
+  <footer class="site-footer"><p>Scoring: weighted mean of available semantic, graph and requested style components. <span>N/A = unavailable or inactive.</span></p><button type="button" class="link-button" data-open-method>Read the scoring method</button></footer>
 
   <dialog id="item-dialog" aria-labelledby="item-dialog-title"><button type="button" class="dialog-close" aria-label="Close item details" data-close-dialog>×</button><div id="item-dialog-content"></div></dialog>
   <dialog id="cypher-dialog" aria-labelledby="expanded-query-title"><button type="button" class="dialog-close" aria-label="Close expanded query" data-close-dialog>×</button><h2 id="expanded-query-title">Search Cypher</h2><p class="panel-description">Candidate selection and evidence queries from the selected run.</p><pre tabindex="0" aria-label="Search Cypher"><code id="expanded-cypher-code"></code></pre></dialog>
   <dialog id="method-dialog" aria-labelledby="method-title">
     <button type="button" class="dialog-close" aria-label="Close methodology" data-close-dialog>×</button>
-    <p class="eyebrow">METHOD REFERENCE</p><h2 id="method-title">Retrieval &amp; scoring</h2>
+    <p class="eyebrow">Method reference</p><h2 id="method-title">Retrieval &amp; scoring</h2>
     <figure class="method-flow">
       <a href="/assets/search-flow.svg" target="_blank" rel="noopener" aria-label="Open the retrieval flow diagram at full size">
         <img src="/assets/search-flow.svg" width="1200" height="1500" loading="lazy" alt="Query parsing, hard filters, attribute top 10 and filtered HNSW top 10, candidate deduplication, and final description, attribute and requested style scoring.">

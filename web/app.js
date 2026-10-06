@@ -74,16 +74,18 @@ function renderItems() {
   $("results-caption").textContent = ranked
     ? `${items.length} ranked ${items.length === 1 ? "match" : "matches"} from ${state.run.candidate_count} fetched candidates · “${state.run.query}”`
     : "Preview images. Run a query to retrieve and rank matching items.";
-  $("catalog-footnote").innerHTML = '<span class="status-dot"></span>' + (ranked
-    ? " Select an item for matched attributes and score details. G = graph · T = semantic · S = style."
-    : " Preview only · No ranking scores.");
+  $("catalog-footnote").textContent = ranked
+    ? "Select an item for matched attributes and score details. G = graph, T = semantic, S = style."
+    : "Preview only. No ranking scores.";
   $("results-grid").innerHTML = items.map((item, index) => {
     const matches = (item.matched_filters || []).slice(0, 2).map((m) => m.value).filter(Boolean).join(" · ");
-    return `<button type="button" class="item-card" data-item="${index}" aria-label="Inspect ${escapeHTML(item.id)}${ranked ? `, rank ${index + 1}, score ${score(item.score)}` : ", catalog preview"}">
-      <span class="card-image">${ranked ? `<span class="card-index">${String(index + 1).padStart(2, "0")}</span>` : ""}${imageMarkup(item)}<span class="card-arrow" aria-hidden="true">↗</span></span>
-      <span class="card-title"><span>${escapeHTML(item.type_name || item.type_code || "Garment")}</span><span class="card-id">${escapeHTML(item.id)}</span></span>
-      <span class="card-subtitle">${ranked ? escapeHTML(matches || "Inspect ranking details") : "Not ranked"}</span>
-      ${ranked ? `<span class="card-score"><span class="score-track" aria-hidden="true"><span style="width:${percentage(item.score)}%"></span></span><strong>${score(item.score)}</strong><span class="muted">final</span></span><span class="card-components"><span>G ${componentScore(item, "graph")}</span><span>T ${componentScore(item, "text")}</span><span>S ${componentScore(item, "style")}</span></span>` : ""}
+    return `<button type="button" class="item-card" style="--i:${index}" data-item="${index}" aria-label="Inspect ${escapeHTML(item.id)}${ranked ? `, rank ${index + 1}, score ${score(item.score)}` : ", catalog preview"}">
+      <span class="card-image">${imageMarkup(item)}</span>
+      <span class="card-meta">
+        <span class="card-title">${ranked ? `<span class="card-rank">${String(index + 1).padStart(2, "0")}</span>` : ""}<span>${escapeHTML(item.type_name || item.type_code || "Garment")}</span><span class="card-id">${escapeHTML(item.id)}</span></span>
+        <span class="card-subtitle">${ranked ? escapeHTML(matches || "Inspect ranking details") : "Not ranked"}</span>
+        ${ranked ? `<span class="card-score"><strong>${score(item.score)}</strong><span class="card-components"><span>G ${componentScore(item, "graph")}</span><span>T ${componentScore(item, "text")}</span><span>S ${componentScore(item, "style")}</span></span></span>` : ""}
+      </span>
     </button>`;
   }).join("");
   handleImageErrors($("results-grid"));
@@ -161,7 +163,7 @@ function resetEvidence(running = false) {
     : "Run a query to inspect the parser output. No constraints have been inferred from the preview images.";
   $("run-summary").textContent = running ? "Search in progress. Settings are locked for this run." : "No completed run. Controls above apply to your next search.";
   $("run-state").textContent = running ? "Running" : state.lastAttemptFailed ? "Failed" : "Not run";
-  for (const id of ["parse-time", "graph-time", "rerank-time", "candidate-count", "total-time"]) $(id).textContent = "—";
+  for (const id of ["parse-time", "graph-time", "rerank-time", "candidate-count", "total-time"]) $(id).textContent = "-";
   for (const id of ["export-run", "copy-cypher", "copy-params", "expand-cypher"]) $(id).disabled = true;
 }
 
@@ -226,7 +228,7 @@ function openItem(index) {
 function setBusy(busy) {
   state.busy = busy;
   $("search-button").disabled = busy;
-  $("search-button-text").textContent = busy ? "Running..." : "Run retrieval";
+  $("search-button-text").textContent = busy ? "Searching..." : "Search";
   $("results-section").setAttribute("aria-busy", String(busy));
   document.querySelectorAll("#search-form input, #search-form select, #reset-weights, [data-query], .view-switch button").forEach((el) => { el.disabled = busy; });
   if (busy) {
@@ -236,10 +238,10 @@ function setBusy(busy) {
     $("empty-state").hidden = true;
     $("results-eyebrow").textContent = "RETRIEVING";
     $("results-title").firstChild.textContent = "Search results";
-    $("result-count").textContent = "—";
+    $("result-count").textContent = "-";
     $("results-caption").textContent = "Waiting for graph retrieval and ranking to complete.";
     $("catalog-footnote").textContent = "Search in progress. No results from this run are available yet.";
-    $("results-grid").innerHTML = Array.from({length: 6}, () => '<div class="skeleton" aria-hidden="true"><div class="card-image"></div><div class="skeleton-line"></div><div class="skeleton-line short"></div></div>').join("");
+    $("results-grid").innerHTML = Array.from({length: 8}, () => '<div class="skeleton" aria-hidden="true"><div class="card-image"></div><div class="skeleton-line"></div><div class="skeleton-line short"></div></div>').join("");
   }
 }
 
@@ -252,7 +254,7 @@ $("search-form").addEventListener("submit", async (event) => {
   if (Object.values(weights).every((value) => value === 0)) {
     $("settings").hidden = false;
     $("settings-toggle").setAttribute("aria-expanded", "true");
-    $("settings-toggle").textContent = "Hide settings";
+    $("settings-toggle").textContent = "Close settings";
     $("weight-settings").open = true;
     notice("Set at least one scoring weight above zero.", "error");
     $("weight-text").focus();
@@ -299,7 +301,7 @@ document.querySelectorAll("dialog").forEach((dialog) => dialog.addEventListener(
 $("settings-toggle").addEventListener("click", () => {
   $("settings").hidden = !$("settings").hidden;
   $("settings-toggle").setAttribute("aria-expanded", String(!$("settings").hidden));
-  $("settings-toggle").textContent = $("settings").hidden ? "Show settings" : "Hide settings";
+  $("settings-toggle").textContent = $("settings").hidden ? "Settings" : "Close settings";
 });
 for (const name of ["min-score", "min-confidence"]) $(name).addEventListener("input", () => { $(`${name}-value`).value = Number($(name).value).toFixed(2); });
 for (const id of Object.values(weightControls)) $(id).addEventListener("input", updateWeightControls);
@@ -369,7 +371,7 @@ async function init() {
       updateWeightControls();
     }
     $("model-options").innerHTML = state.config.models.map((model) => `<option value="${escapeHTML(model)}"></option>`).join("");
-    $("runtime-label").innerHTML = '<span class="status-dot"></span>' + (state.config.ready ? " Live search configured" : state.config.preview ? " Catalog preview · Search offline" : " Catalog preview · Search not configured");
+    $("runtime-label").innerHTML = `<span class="status-dot${state.config.ready ? " live" : ""}"></span>` + (state.config.ready ? " Live search configured" : state.config.preview ? " Catalog preview · Search offline" : " Catalog preview · Search not configured");
   } else {
     $("runtime-label").textContent = "Server unavailable";
     notice("Could not connect to the server. Reload the page after checking the server is running.", "error");
