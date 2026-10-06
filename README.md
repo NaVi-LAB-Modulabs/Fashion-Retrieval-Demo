@@ -8,9 +8,10 @@ Dataset names belong in experiment documentation and provenance rather than the
 main interface. The initial preview displays saved images listed in `sample_ids.json`, without querying Neo4j. Search results use the same local image catalog. Catalog preview labels distinguish unranked browsing from
 actual search results, without presenting a dataset as the product name.
 
-The web UI is a retrieval workspace: query and settings at the top, followed by
-extracted constraints, the final candidate query and ranked results in three adjacent panes.
-Cypher stays visible without opening an accordion. Parameter values, applied
+The web UI is laid out like a shopping search page: a large search bar with
+collapsible settings at the top, then ranked product results beside an extracted-constraints
+rail, followed by a "How this search was ranked" section with stage timings, the final
+candidate Cypher and its parameters. Cypher stays visible without opening an accordion. Parameter values, applied
 settings and measured stage timings are shown alongside the query. Image cards
 include component scores; a table and item details provide more ranking evidence.
 Raw parser/parameter JSON and run export remain available for inspection.
