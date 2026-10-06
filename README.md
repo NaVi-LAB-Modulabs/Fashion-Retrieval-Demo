@@ -175,7 +175,7 @@ score components are omitted before the remaining weights are normalized.
 [Download the PNG diagram](web/search-flow.png). Both branches use the entire
 hard-filtered population; the description branch additionally requires a matching
 embedding model. Style targets affect final scoring only.
-To regenerate the SVG and PNG with matplotlib installed:
+To regenerate the SVG and PNG with Pillow installed:
 
 ```cmd
 python scripts\render_search_flow.py
