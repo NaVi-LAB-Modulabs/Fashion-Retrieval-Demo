@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import os
 import sys
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -27,13 +28,25 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+class DropAuthOnCrossHostRedirect(urllib.request.HTTPRedirectHandler):
+    """Keep the token on its own host: hosted files (e.g. Hugging Face) redirect to a signed
+    CDN URL, which must not receive it."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if redirected is not None and urllib.parse.urlsplit(newurl).netloc != urllib.parse.urlsplit(req.full_url).netloc:
+            redirected.remove_header("Authorization")
+        return redirected
+
+
 def fetch(url: str, expected_sha256: str, target: Path, token: str = "") -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     partial = target.with_suffix(".part")
     request = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"} if token else {})
     digest = hashlib.sha256()
     try:
-        with urllib.request.urlopen(request, timeout=60) as response, partial.open("wb") as file:
+        opener = urllib.request.build_opener(DropAuthOnCrossHostRedirect)
+        with opener.open(request, timeout=60) as response, partial.open("wb") as file:
             for chunk in iter(lambda: response.read(1 << 20), b""):
                 digest.update(chunk)
                 file.write(chunk)

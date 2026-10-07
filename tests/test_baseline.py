@@ -7,7 +7,9 @@ import importlib.util
 import os
 from pathlib import Path
 import sys
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from tempfile import TemporaryDirectory
+from threading import Thread
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -141,6 +143,44 @@ class FetchModelScriptTests(unittest.TestCase):
         self.assertEqual(self.run_main(CLIP_TEXT_MODEL_URL=self.source.as_uri()), 1)
         self.assertFalse(self.target.exists())
         self.assertEqual(list(self.target.parent.glob("*.part")) if self.target.parent.exists() else [], [])
+
+    def test_token_is_not_forwarded_to_a_redirected_host(self):
+        seen = {}
+
+        def server(handler):
+            httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+            Thread(target=httpd.serve_forever, daemon=True).start()
+            self.addCleanup(httpd.server_close)
+            self.addCleanup(httpd.shutdown)
+            return httpd.server_port
+
+        class CDN(BaseHTTPRequestHandler):
+            def do_GET(self):
+                seen["cdn"] = self.headers.get("Authorization")
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"model bytes")
+
+            def log_message(self, *args):
+                pass
+
+        cdn_port = server(CDN)
+
+        class Hub(BaseHTTPRequestHandler):
+            def do_GET(self):
+                seen["hub"] = self.headers.get("Authorization")
+                self.send_response(302)
+                # "localhost" vs "127.0.0.1": a different host, like a hub redirecting to its CDN.
+                self.send_header("Location", f"http://localhost:{cdn_port}/signed")
+                self.end_headers()
+
+            def log_message(self, *args):
+                pass
+
+        hub_port = server(Hub)
+        self.fetch.fetch(f"http://127.0.0.1:{hub_port}/model.onnx", self.digest, self.target, token="secret")
+        self.assertEqual(seen, {"hub": "Bearer secret", "cdn": None})
+        self.assertEqual(self.target.read_bytes(), b"model bytes")
 
 
 try:
