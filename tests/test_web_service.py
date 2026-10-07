@@ -293,10 +293,11 @@ class PreviewHTTPTests(unittest.TestCase):
             self.assertEqual(exc.exception.code, 404)
 
     def test_preview_cannot_run_live_search(self):
-        request = Request(self.base + "/api/search", data=b'{"query":"blue"}', headers={"Content-Type": "application/json"})
-        with self.assertRaises(HTTPError) as exc:
-            urlopen(request)
-        self.assertEqual(exc.exception.code, 503)
+        for route in ["/api/search", "/api/baseline"]:
+            request = Request(self.base + route, data=b'{"query":"blue"}', headers={"Content-Type": "application/json"})
+            with self.subTest(route=route), self.assertRaises(HTTPError) as exc:
+                urlopen(request)
+            self.assertEqual(exc.exception.code, 503)
 
 
 if __name__ == "__main__":

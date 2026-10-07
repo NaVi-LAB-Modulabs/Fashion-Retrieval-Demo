@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 import json
 import sys
+from contextlib import asynccontextmanager
+from threading import Thread
 from uuid import uuid4
 from pathlib import Path
 from typing import Any
@@ -15,12 +17,23 @@ sys.path.insert(0, str(ROOT / "src"))
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fashion_how_graphdb import baseline
 from fashion_how_graphdb.web_service import (
-    catalog_preview, configuration, image_index, retrieve, validate_request,
+    catalog_preview, configuration, image_index, retrieve, retrieve_baseline,
+    validate_baseline_request, validate_request,
 )
 from fashion_how_graphdb.diagnostics import failure_details
 
-app = FastAPI(title="Fashion Search API", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> Any:
+    # Load CLIP in the background so the first baseline search does not pay the load time.
+    if configuration()["baseline_ready"]:
+        Thread(target=baseline.clip_encoder, daemon=True).start()
+    yield
+
+
+app = FastAPI(title="Fashion Search API", version="1.0.0", lifespan=lifespan)
 
 
 @app.middleware("http")
@@ -67,15 +80,33 @@ def search(payload: dict[str, Any]) -> Any:
     try:
         return retrieve(payload)
     except Exception as exc:
-        # Keep credentials, provider responses and database connection details off the client.
-        details = failure_details(exc)
-        error_id = uuid4().hex[:12]
-        logging.getLogger(__name__).error("Retrieval failed error_id=%s diagnostics=%s", error_id, json.dumps(details))
-        return JSONResponse(status_code=502, content={
-            "detail": f"Search failed during {details['stage']}. Reference: {error_id}. Check the server logs for this reference.",
-            "error_id": error_id,
-            "stage": details["stage"],
-        })
+        return failure_response(exc)
+
+
+@app.post("/api/baseline")
+def baseline_search(payload: dict[str, Any]) -> Any:
+    try:
+        validate_baseline_request(payload)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    if not configuration()["baseline_ready"]:
+        raise HTTPException(503, "The CLIP baseline is not enabled on this server. Provide the CLIP text model (models/) and configure Neo4j.")
+    try:
+        return retrieve_baseline(payload)
+    except Exception as exc:
+        return failure_response(exc)
+
+
+def failure_response(exc: Exception) -> JSONResponse:
+    # Keep credentials, provider responses and database connection details off the client.
+    details = failure_details(exc)
+    error_id = uuid4().hex[:12]
+    logging.getLogger(__name__).error("Retrieval failed error_id=%s diagnostics=%s", error_id, json.dumps(details))
+    return JSONResponse(status_code=502, content={
+        "detail": f"Search failed during {details['stage']}. Reference: {error_id}. Check the server logs for this reference.",
+        "error_id": error_id,
+        "stage": details["stage"],
+    })
 
 
 app.mount("/assets", StaticFiles(directory=ROOT / "web"), name="assets")

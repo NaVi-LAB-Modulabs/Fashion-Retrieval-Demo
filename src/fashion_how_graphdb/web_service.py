@@ -12,7 +12,7 @@ from time import perf_counter
 from typing import Any
 from urllib.parse import quote
 
-from . import hybrid_search, search
+from . import baseline, hybrid_search, search
 from .diagnostics import RetrievalFailure, retrieval_stage
 from .neo4j_config import (
     DEFAULT_NEO4J_DATABASE, DEFAULT_NEO4J_PASSWORD,
@@ -65,11 +65,15 @@ def image_url(item_id: Any) -> str | None:
 
 
 def configuration(*, preview: bool = False) -> dict[str, Any]:
-    configured = bool(os.getenv("OPENAI_API_KEY") and DEFAULT_NEO4J_URI and DEFAULT_NEO4J_PASSWORD)
+    neo4j_configured = bool(DEFAULT_NEO4J_URI and DEFAULT_NEO4J_PASSWORD)
+    configured = bool(os.getenv("OPENAI_API_KEY") and neo4j_configured)
     catalog = search.search_catalog()
     return {
         "ready": configured and not preview,
         "preview": preview,
+        # The baseline needs only Neo4j and the exported CLIP text model, not OpenAI.
+        "baseline_ready": neo4j_configured and baseline.encoder_available() and not preview,
+        "baseline_model": baseline.CLIP_MODEL,
         "default_model": default_model(),
         "models": list(dict.fromkeys([default_model(), "gpt-4.1-mini", "gpt-4.1"])),
         "image_count": len(manifest_ids()),
@@ -138,7 +142,18 @@ def neo4j_read(work: Any) -> Any:
                 raise
 
 
-def validate_request(payload: dict[str, Any]) -> dict[str, Any]:
+def item_identity(item: dict[str, Any]) -> dict[str, Any]:
+    item_id = item.get("item_ID") or item.get("id")
+    image_id = str(item_id) if item_id is not None else None
+    type_code = item.get("category") or item.get("type_code")
+    return {
+        "id": item.get("id") or item_id, "image_id": image_id, "image_url": image_url(image_id),
+        "type_code": type_code,
+        "type_name": item.get("category_name") or item.get("type_name") or CATEGORY_NAMES.get(type_code, "Garment"),
+    }
+
+
+def validate_baseline_request(payload: dict[str, Any]) -> dict[str, Any]:
     query = payload.get("query")
     if not isinstance(query, str) or not query.strip():
         raise ValueError("Describe the fashion items you are looking for.")
@@ -147,10 +162,15 @@ def validate_request(payload: dict[str, Any]) -> dict[str, Any]:
     limit = payload.get("limit", 12)
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
         raise ValueError("Results must be a whole number between 1 and 50.")
+    return {"query": query.strip(), "limit": limit}
+
+
+def validate_request(payload: dict[str, Any]) -> dict[str, Any]:
+    values = validate_baseline_request(payload)
     model = payload.get("model") or default_model()
     if not isinstance(model, str) or len(model) > 100 or not model.strip():
         raise ValueError("Choose a valid parser model.")
-    values = {"query": query.strip(), "limit": limit, "model": model.strip()}
+    values["model"] = model.strip()
     for name in ("min_confidence", "min_score"):
         value = payload.get(name, 0.0)
         if value is not None and (
@@ -227,12 +247,7 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
     results = []
     for rank, item in enumerate(items, 1):
         public = {key: item.get(key) for key in fields}
-        item_id = item.get("item_ID") or item.get("id")
-        image_id = str(item_id) if item_id is not None else None
-        public["id"] = item.get("id") or item_id
-        public.update(rank=rank, image_url=image_url(image_id), image_id=image_id)
-        public["type_code"] = item.get("category") or item.get("type_code")
-        public["type_name"] = item.get("category_name") or item.get("type_name") or CATEGORY_NAMES.get(public["type_code"], "Garment")
+        public.update(rank=rank, **item_identity(item))
         results.append(public)
     finished = perf_counter()
     return {
@@ -245,5 +260,36 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
         "timings": {"parse_ms": round((parsed - started) * 1000),
                     "graph_ms": round((retrieved - parsed) * 1000),
                     "rerank_ms": round((finished - retrieved) * 1000),
+                    "total_ms": round((finished - started) * 1000)},
+    }
+
+
+def retrieve_baseline(payload: dict[str, Any]) -> dict[str, Any]:
+    """Rank every item by CLIP cosine between the raw query and its image embedding."""
+    request = validate_baseline_request(payload)
+    if not configuration()["baseline_ready"]:
+        raise RuntimeError("The CLIP baseline is not available. Provide the CLIP text model (models/) and configure Neo4j.")
+    started = perf_counter()
+    with retrieval_stage("CLIP query encoding"):
+        embedding = baseline.text_embedding(baseline.clip_encoder(), request["query"])
+    encoded = perf_counter()
+    with retrieval_stage("baseline similarity search"):
+        rows = neo4j_read(lambda session: baseline.search(session, embedding, limit=request["limit"]))
+    finished = perf_counter()
+    items = [
+        {"rank": rank, **item_identity(row), "score": round(float(row["score"]), 6)}
+        for rank, row in enumerate(rows, 1)
+    ]
+    return {
+        "query": request["query"], "settings": request, "items": items,
+        "model": baseline.CLIP_MODEL, "cypher": baseline.BASELINE_CYPHER,
+        "params": {
+            "embedding_model": baseline.CLIP_MODEL,
+            "query_embedding": f"<{len(embedding)} dimensions; omitted from response>",
+            "limit": request["limit"],
+        },
+        "result_count": len(items),
+        "timings": {"encode_ms": round((encoded - started) * 1000),
+                    "search_ms": round((finished - encoded) * 1000),
                     "total_ms": round((finished - started) * 1000)},
     }
