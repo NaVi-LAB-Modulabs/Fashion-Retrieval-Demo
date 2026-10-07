@@ -1,0 +1,3 @@
+# Only for scripts/export_clip_text_onnx.py (pulls in PyTorch); not needed to run the app.
+sentence-transformers>=5.7,<6.0
+onnx>=1.17,<2.0

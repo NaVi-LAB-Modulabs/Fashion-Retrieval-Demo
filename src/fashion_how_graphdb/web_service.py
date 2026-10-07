@@ -12,8 +12,8 @@ from time import perf_counter
 from typing import Any
 from urllib.parse import quote
 
-from . import hybrid_search, search
-from .diagnostics import retrieval_stage
+from . import baseline, hybrid_search, search
+from .diagnostics import RetrievalFailure, retrieval_stage
 from .neo4j_config import (
     DEFAULT_NEO4J_DATABASE, DEFAULT_NEO4J_PASSWORD,
     DEFAULT_NEO4J_URI, DEFAULT_NEO4J_USER,
@@ -22,7 +22,8 @@ from .taxonomy import CATEGORY_NAMES
 from .llm import default_model
 
 ROOT = Path(__file__).resolve().parents[2]
-IMAGE_DIR = ROOT / "sample_images"
+# Served from the CDN on Vercel (public/ is static there) and by the /images route locally.
+IMAGE_DIR = ROOT / "public" / "images"
 SAMPLE_IDS_FILE = ROOT / "sample_ids.json"
 
 
@@ -40,8 +41,13 @@ def sample_ids() -> dict[str, list[str]]:
 
 
 @lru_cache(maxsize=1)
+def manifest_ids() -> frozenset[str]:
+    return frozenset(item_id for ids in sample_ids().values() for item_id in ids)
+
+
+@lru_cache(maxsize=1)
 def image_index() -> dict[str, Path]:
-    allowed = {item_id for ids in sample_ids().values() for item_id in ids}
+    allowed = manifest_ids()
     return {
         path.name: path for path in sorted(IMAGE_DIR.rglob("*"))
         if path.is_file() and path.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}
@@ -51,24 +57,26 @@ def image_index() -> dict[str, Path]:
 
 
 def image_url(item_id: Any) -> str | None:
-    if not isinstance(item_id, str):
+    # Every manifest ID has public/images/<id>.jpg. The manifest, not the filesystem, decides,
+    # because the deployed function bundle excludes public/.
+    if not isinstance(item_id, str) or item_id not in manifest_ids():
         return None
-    for extension in (".jpg", ".jpeg", ".png", ".webp"):
-        name = item_id + extension
-        if name in image_index():
-            return f"/images/{quote(name)}"
-    return None
+    return f"/images/{quote(item_id)}.jpg"
 
 
 def configuration(*, preview: bool = False) -> dict[str, Any]:
-    configured = bool(os.getenv("OPENAI_API_KEY") and DEFAULT_NEO4J_URI and DEFAULT_NEO4J_PASSWORD)
+    neo4j_configured = bool(DEFAULT_NEO4J_URI and DEFAULT_NEO4J_PASSWORD)
+    configured = bool(os.getenv("OPENAI_API_KEY") and neo4j_configured)
     catalog = search.search_catalog()
     return {
         "ready": configured and not preview,
         "preview": preview,
+        # The baseline needs only Neo4j and the exported CLIP text model, not OpenAI.
+        "baseline_ready": neo4j_configured and baseline.encoder_available() and not preview,
+        "baseline_model": baseline.CLIP_MODEL,
         "default_model": default_model(),
         "models": list(dict.fromkeys([default_model(), "gpt-4.1-mini", "gpt-4.1"])),
-        "image_count": len(image_index()),
+        "image_count": len(manifest_ids()),
         "type_count": len(catalog["item_types"]),
         "style_axis_count": len(catalog["style_axes"]),
         "type_names": CATEGORY_NAMES,
@@ -104,11 +112,48 @@ def neo4j_driver() -> Any:
     from neo4j import GraphDatabase
     return GraphDatabase.driver(
         DEFAULT_NEO4J_URI, auth=(DEFAULT_NEO4J_USER, DEFAULT_NEO4J_PASSWORD),
-        connection_timeout=15.0, connection_acquisition_timeout=20.0,
+        connection_timeout=15.0, connection_acquisition_timeout=10.0,
+        # Pooled connections can die while idle (network change, server-side idle close);
+        # check ones idle for 30 s before reuse so a dead one is replaced, not used.
+        # A check against an unreachable peer waits out the acquisition timeout.
+        liveness_check_timeout=30.0,
     )
 
 
-def validate_request(payload: dict[str, Any]) -> dict[str, Any]:
+def neo4j_read(work: Any) -> Any:
+    """Run read-only `work(session)`, retrying once if a pooled connection was dead.
+
+    The failed attempt discards the dead connections, so the retry gets a fresh one.
+    """
+    from neo4j import exceptions
+    retryable = tuple(error for error in (
+        exceptions.ServiceUnavailable, exceptions.SessionExpired,
+        getattr(exceptions, "ConnectionAcquisitionTimeoutError", None),  # neo4j >= 6
+    ) if error)
+    for attempt in (1, 2):
+        try:
+            with neo4j_driver().session(**({"database": DEFAULT_NEO4J_DATABASE} if DEFAULT_NEO4J_DATABASE else {})) as session:
+                return work(session)
+        except RetrievalFailure as exc:
+            if attempt == 2 or not isinstance(exc.cause, retryable):
+                raise
+        except retryable:
+            if attempt == 2:
+                raise
+
+
+def item_identity(item: dict[str, Any]) -> dict[str, Any]:
+    item_id = item.get("item_ID") or item.get("id")
+    image_id = str(item_id) if item_id is not None else None
+    type_code = item.get("category") or item.get("type_code")
+    return {
+        "id": item.get("id") or item_id, "image_id": image_id, "image_url": image_url(image_id),
+        "type_code": type_code,
+        "type_name": item.get("category_name") or item.get("type_name") or CATEGORY_NAMES.get(type_code, "Garment"),
+    }
+
+
+def validate_baseline_request(payload: dict[str, Any]) -> dict[str, Any]:
     query = payload.get("query")
     if not isinstance(query, str) or not query.strip():
         raise ValueError("Describe the fashion items you are looking for.")
@@ -117,10 +162,15 @@ def validate_request(payload: dict[str, Any]) -> dict[str, Any]:
     limit = payload.get("limit", 12)
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
         raise ValueError("Results must be a whole number between 1 and 50.")
+    return {"query": query.strip(), "limit": limit}
+
+
+def validate_request(payload: dict[str, Any]) -> dict[str, Any]:
+    values = validate_baseline_request(payload)
     model = payload.get("model") or default_model()
     if not isinstance(model, str) or len(model) > 100 or not model.strip():
         raise ValueError("Choose a valid parser model.")
-    values = {"query": query.strip(), "limit": limit, "model": model.strip()}
+    values["model"] = model.strip()
     for name in ("min_confidence", "min_score"):
         value = payload.get(name, 0.0)
         if value is not None and (
@@ -152,8 +202,8 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
             request["query"], client=openai_client(), model=request["model"],
         )
     parsed = perf_counter()
-    driver = neo4j_driver()
-    with driver.session(**({"database": DEFAULT_NEO4J_DATABASE} if DEFAULT_NEO4J_DATABASE else {})) as session:
+
+    def select_and_fetch(session: Any) -> tuple[Any, ...]:
         with retrieval_stage("candidate selection"):
             candidate_ids, embedding = hybrid_search.select_candidates(
                 session, extraction, request["query"], client=openai_client(),
@@ -168,6 +218,9 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
             raw_results = [
                 dict(row["result"]) for row in session.run(cypher, **query_params)
             ] if candidate_ids else []
+        return candidate_ids, embedding, cypher, query_params, raw_results
+
+    candidate_ids, embedding, cypher, query_params, raw_results = neo4j_read(select_and_fetch)
     retrieved = perf_counter()
     with retrieval_stage("reranking"):
         items = hybrid_search.rerank(
@@ -194,12 +247,7 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
     results = []
     for rank, item in enumerate(items, 1):
         public = {key: item.get(key) for key in fields}
-        item_id = item.get("item_ID") or item.get("id")
-        image_id = str(item_id) if item_id is not None else None
-        public["id"] = item.get("id") or item_id
-        public.update(rank=rank, image_url=image_url(image_id), image_id=image_id)
-        public["type_code"] = item.get("category") or item.get("type_code")
-        public["type_name"] = item.get("category_name") or item.get("type_name") or CATEGORY_NAMES.get(public["type_code"], "Garment")
+        public.update(rank=rank, **item_identity(item))
         results.append(public)
     finished = perf_counter()
     return {
@@ -212,5 +260,36 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
         "timings": {"parse_ms": round((parsed - started) * 1000),
                     "graph_ms": round((retrieved - parsed) * 1000),
                     "rerank_ms": round((finished - retrieved) * 1000),
+                    "total_ms": round((finished - started) * 1000)},
+    }
+
+
+def retrieve_baseline(payload: dict[str, Any]) -> dict[str, Any]:
+    """Rank every item by CLIP cosine between the raw query and its image embedding."""
+    request = validate_baseline_request(payload)
+    if not configuration()["baseline_ready"]:
+        raise RuntimeError("The CLIP baseline is not available. Provide the CLIP text model (models/) and configure Neo4j.")
+    started = perf_counter()
+    with retrieval_stage("CLIP query encoding"):
+        embedding = baseline.text_embedding(baseline.clip_encoder(), request["query"])
+    encoded = perf_counter()
+    with retrieval_stage("baseline similarity search"):
+        rows = neo4j_read(lambda session: baseline.search(session, embedding, limit=request["limit"]))
+    finished = perf_counter()
+    items = [
+        {"rank": rank, **item_identity(row), "score": round(float(row["score"]), 6)}
+        for rank, row in enumerate(rows, 1)
+    ]
+    return {
+        "query": request["query"], "settings": request, "items": items,
+        "model": baseline.CLIP_MODEL, "cypher": baseline.BASELINE_CYPHER,
+        "params": {
+            "embedding_model": baseline.CLIP_MODEL,
+            "query_embedding": f"<{len(embedding)} dimensions; omitted from response>",
+            "limit": request["limit"],
+        },
+        "result_count": len(items),
+        "timings": {"encode_ms": round((encoded - started) * 1000),
+                    "search_ms": round((finished - encoded) * 1000),
                     "total_ms": round((finished - started) * 1000)},
     }

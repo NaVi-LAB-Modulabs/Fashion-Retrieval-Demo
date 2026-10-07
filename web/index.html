@@ -11,8 +11,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
-  <link rel="stylesheet" href="/assets/styles.css?v=20261006-shop">
-  <script src="/assets/app.js?v=20261006-shop" defer></script>
+  <link rel="stylesheet" href="/assets/styles.css?v=20261008-baseline-first">
+  <script src="/assets/app.js?v=20261008-baseline-first" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#query">Skip to search</a>
@@ -75,7 +75,23 @@
       </aside>
 
       <section class="results-section panel" aria-labelledby="results-title" aria-busy="false" id="results-section">
-        <div class="results-head">
+        <section class="baseline" id="baseline" aria-labelledby="baseline-title" aria-busy="false" hidden>
+          <div class="baseline-head">
+            <div>
+              <p class="results-eyebrow">BASELINE</p>
+              <h3 id="baseline-title">CLIP baseline<span class="count-badge" id="baseline-count">-</span></h3>
+            </div>
+            <span class="method-chip">ViT-L/14 · text → image cosine</span>
+          </div>
+          <p class="baseline-description">The raw query is embedded by the CLIP text encoder and compared with every item’s image embedding. No query parsing, filters or reranking.</p>
+          <p class="results-caption" id="baseline-caption"></p>
+          <div class="results-grid" id="baseline-grid"></div>
+          <div id="baseline-table" class="table-wrap" hidden></div>
+          <p class="baseline-message" id="baseline-message" role="status" hidden></p>
+          <details class="baseline-query" id="baseline-query" hidden><summary>Baseline Cypher <span id="baseline-timing"></span></summary><pre><code id="baseline-cypher"></code></pre><p class="baseline-params" id="baseline-params"></p></details>
+        </section>
+
+        <div class="results-head" id="results-head">
           <div>
             <p id="results-eyebrow" class="results-eyebrow">UNRANKED</p>
             <h2 id="results-title">Catalog preview<span class="count-badge" id="result-count">-</span></h2>
@@ -140,6 +156,7 @@ Run retrieval to inspect the final candidate query here.</code></pre>
       <li><h3>Rank the combined candidates</h3><p>The final score combines description similarity, the same required graph attributes, and only requested style axes. Relative weights are adjustable; defaults are 55:35:10. Inferred attributes do not contribute to graph filtering or scoring.</p></li>
     </ol>
     <div class="method-note">Unavailable or zero-weight components are omitted and remaining weights are normalized. Candidate counts refer to the combined pool after hard filtering, before the final score threshold. Scores are retrieval signals, not probabilities.</div>
+    <div class="method-baseline"><h3>CLIP baseline</h3><p>For comparison, the raw query is encoded by the CLIP ViT-L/14 text encoder and every item is ranked by exact cosine similarity with its stored CLIP image embedding. The baseline uses no query parsing, hard filters, graph attributes or reranking, so exclusions such as “not white” are not enforced. Its scores are raw cosine values in [−1, 1] and are not comparable with Fashion Search scores.</p></div>
   </dialog>
   <noscript><p class="notice">Enable JavaScript to inspect results and run queries.</p></noscript>
 </body>

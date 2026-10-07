@@ -62,8 +62,8 @@ class RetrievalTests(unittest.TestCase):
             result = service.retrieve({"query": "a blue blouse", **settings})
         return result, session, client
 
-    @patch.object(service, "image_index", return_value={"51727804_0.jpg": Path("51727804_0.jpg")})
-    def test_graph_results_keep_evidence_and_hide_unknown_properties(self, image_index):
+    @patch.object(service, "manifest_ids", return_value=frozenset({"51727804_0"}))
+    def test_graph_results_keep_evidence_and_hide_unknown_properties(self, manifest_ids):
         result, session, client = self.run_search([
             {"id": "51727804_0", "type_code": "BL", "text_score": None,
              "description_embedding": [1, 2, 3], "internal_note": "private",
@@ -209,7 +209,7 @@ class RetrievalTests(unittest.TestCase):
 
     def test_preview_never_claims_search_scores_or_connectivity(self):
         with patch.object(service, "sample_ids", return_value={"tops": ["123_0"]}), \
-             patch.object(service, "image_index", return_value={"123_0.jpg": Path("123_0.jpg")}):
+             patch.object(service, "manifest_ids", return_value=frozenset({"123_0"})):
             data = service.catalog_preview()
         self.assertFalse(data["ranked"])
         self.assertEqual(data["source"], "local")
@@ -221,7 +221,7 @@ class RetrievalTests(unittest.TestCase):
 
     def test_image_index_only_serves_manifest_ids(self):
         with TemporaryDirectory() as directory, patch.object(service, "IMAGE_DIR", Path(directory)), \
-             patch.object(service, "sample_ids", return_value={"tops": ["123_0"]}):
+             patch.object(service, "manifest_ids", return_value=frozenset({"123_0"})):
             (Path(directory) / "123_0.jpg").write_bytes(b"image")
             (Path(directory) / "999_0.jpg").write_bytes(b"image")
             service.image_index.cache_clear()
@@ -229,6 +229,31 @@ class RetrievalTests(unittest.TestCase):
             self.assertEqual(service.image_url("123_0"), "/images/123_0.jpg")
             self.assertIsNone(service.image_url("999_0"))
         service.image_index.cache_clear()
+
+
+class Neo4jReadRetryTests(unittest.TestCase):
+    def read(self, *outcomes):
+        driver = MagicMock()
+        work = MagicMock(side_effect=outcomes)
+        with patch.object(service, "neo4j_driver", return_value=driver):
+            return service.neo4j_read(work), work
+
+    def test_dead_connection_is_retried_once_on_a_new_session(self):
+        from neo4j.exceptions import ServiceUnavailable, SessionExpired
+        from fashion_how_graphdb.diagnostics import RetrievalFailure
+        for error in (SessionExpired("defunct"), ServiceUnavailable("gone"),
+                      RetrievalFailure("candidate selection", SessionExpired("defunct"))):
+            with self.subTest(error=type(error).__name__):
+                result, work = self.read(error, ["row"])
+                self.assertEqual(result, ["row"])
+                self.assertEqual(work.call_count, 2)
+
+    def test_persistent_or_unrelated_errors_are_not_retried_further(self):
+        from neo4j.exceptions import CypherSyntaxError, SessionExpired
+        with self.assertRaises(SessionExpired):
+            self.read(SessionExpired("defunct"), SessionExpired("still defunct"))
+        with self.assertRaises(CypherSyntaxError):
+            self.read(CypherSyntaxError("bad query"), ["row"])
 
 
 class PreviewHTTPTests(unittest.TestCase):
@@ -251,7 +276,7 @@ class PreviewHTTPTests(unittest.TestCase):
                 self.assertEqual(response.status, 200)
                 self.assertTrue(response.read())
         with urlopen(self.base + "/") as response:
-            self.assertIn(b"/assets/app.js?v=20261006-shop", response.read())
+            self.assertIn(b"/assets/app.js?v=20261008-baseline-first", response.read())
         with urlopen(self.base + "/api/config") as response:
             self.assertFalse(json.load(response)["ready"])
 
@@ -268,10 +293,11 @@ class PreviewHTTPTests(unittest.TestCase):
             self.assertEqual(exc.exception.code, 404)
 
     def test_preview_cannot_run_live_search(self):
-        request = Request(self.base + "/api/search", data=b'{"query":"blue"}', headers={"Content-Type": "application/json"})
-        with self.assertRaises(HTTPError) as exc:
-            urlopen(request)
-        self.assertEqual(exc.exception.code, 503)
+        for route in ["/api/search", "/api/baseline"]:
+            request = Request(self.base + route, data=b'{"query":"blue"}', headers={"Content-Type": "application/json"})
+            with self.subTest(route=route), self.assertRaises(HTTPError) as exc:
+                urlopen(request)
+            self.assertEqual(exc.exception.code, 503)
 
 
 if __name__ == "__main__":

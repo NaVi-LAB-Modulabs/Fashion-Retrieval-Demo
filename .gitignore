@@ -8,3 +8,4 @@ outputs/
 *.log
 .pytest_cache/
 .vercel/
+models/*.onnx

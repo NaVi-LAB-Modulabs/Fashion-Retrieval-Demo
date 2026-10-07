@@ -9,7 +9,15 @@ dependencies = [
     "openai>=1.40.0,<3.0",
     "neo4j>=5.20.0,<7.0",
     "python-dotenv>=1.0.0,<2.0",
+    # CLIP baseline query encoder (ONNX); torch is only needed to export the model.
+    "onnxruntime>=1.20.0,<2.0",
+    "tokenizers>=0.20.0,<1.0",
+    "numpy>=1.26.0,<3.0",
 ]
 
 [tool.vercel]
 entrypoint = "web_app:app"
+
+[tool.vercel.scripts]
+# Downloads models/clip_text_fp16w.onnx when CLIP_TEXT_MODEL_URL is set; otherwise the baseline is off.
+build = "python scripts/fetch_clip_text_model.py"

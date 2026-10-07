@@ -6,7 +6,7 @@ const score = (value) => typeof value === "number" && Number.isFinite(value) ? v
 const componentScore = (item, name) => item.score_components?.includes(name) ? score(item[`${name}_score`]) : "N/A";
 const percentage = (value) => typeof value === "number" && Number.isFinite(value) ? Math.min(100, Math.max(0, value * 100)) : 0;
 const label = (value) => String(value || "").replaceAll("_", " ");
-const state = { config: null, preview: [], run: null, view: "grid", busy: false, lastAttemptFailed: false };
+const state = { config: null, preview: [], run: null, view: "grid", busy: false, lastAttemptFailed: false, attempt: 0, runAttempt: null, baseline: null, revealPending: false };
 const weightControls = { text: "weight-text", graph: "weight-graph", style: "weight-style" };
 let defaultWeightPoints = { text: 55, graph: 35, style: 10 };
 
@@ -101,10 +101,105 @@ function renderItems() {
 function applyView() {
   $("results-grid").hidden = state.view !== "grid";
   $("ranking-table").hidden = state.view !== "table" || !(state.run ? state.run.items.length : state.preview.length);
+  const baselineLoading = state.baseline?.status === "loading";
+  const baselineItems = state.baseline?.data?.items || [];
+  $("baseline-grid").hidden = !baselineLoading && (state.view !== "grid" || !baselineItems.length);
+  $("baseline-table").hidden = baselineLoading || state.view !== "table" || !baselineItems.length;
   for (const mode of ["grid", "table"]) {
     $(`${mode}-view`).classList.toggle("active", mode === state.view);
     $(`${mode}-view`).setAttribute("aria-pressed", String(mode === state.view));
   }
+}
+
+// Fashion Search ranks by item ID, only when both lists come from the same submission.
+function sharedRanks() {
+  if (!state.run || state.runAttempt !== state.baseline?.attempt) return null;
+  return new Map(state.run.items.map((item, index) => [item.id, index + 1]));
+}
+
+function renderBaseline() {
+  const baseline = state.baseline;
+  $("baseline").hidden = !baseline;
+  if (!baseline) return;
+  const loading = baseline.status === "loading";
+  const data = baseline.status === "ok" ? baseline.data : null;
+  const items = data?.items || [];
+  $("baseline").setAttribute("aria-busy", String(loading));
+  $("baseline-count").textContent = data ? items.length : "-";
+  const message = baseline.status === "unavailable" ? "The CLIP baseline is not enabled on this server."
+    : baseline.status === "error" ? `Baseline failed: ${baseline.error}`
+    : data && !items.length ? "No items have a CLIP image embedding for this model." : "";
+  $("baseline-message").textContent = message;
+  $("baseline-message").className = `baseline-message${baseline.status === "error" ? " error" : ""}`;
+  $("baseline-message").hidden = !message;
+  $("baseline-grid").innerHTML = loading
+    ? Array.from({length: Math.min(baseline.limit || 8, 8)}, () => '<div class="skeleton" aria-hidden="true"><div class="card-image"></div><div class="skeleton-line"></div><div class="skeleton-line short"></div></div>').join("")
+    : items.map((item, index) => `<button type="button" class="item-card" style="--i:${index}" data-baseline-item="${index}" aria-label="Inspect ${escapeHTML(item.id)}, baseline rank ${index + 1}, cosine ${score(item.score)}">
+      <span class="card-image">${imageMarkup(item)}</span>
+      <span class="card-meta">
+        <span class="card-title"><span class="card-rank">${String(index + 1).padStart(2, "0")}</span><span>${escapeHTML(item.type_name || item.type_code || "Garment")}</span><span class="card-id">${escapeHTML(item.id)}</span></span>
+        <span class="card-subtitle"></span>
+        <span class="card-score cosine"><strong>${score(item.score)}</strong></span>
+      </span>
+    </button>`).join("");
+  handleImageErrors($("baseline-grid"));
+  $("baseline-query").hidden = !data;
+  if (data) {
+    $("baseline-cypher").innerHTML = highlightCypher(data.cypher);
+    $("baseline-timing").textContent = `encode ${data.timings.encode_ms} ms · scan ${data.timings.search_ms} ms`;
+    $("baseline-params").textContent = Object.entries(data.params).map(([key, value]) => `$${key} = ${JSON.stringify(value)}`).join(" · ");
+  }
+  renderBaselineOverlap();
+}
+
+// Updates overlap marks in place: the baseline is usually on screen when the main search
+// finishes, and rebuilding its cards would replay their entrance animation.
+function renderBaselineOverlap() {
+  const baseline = state.baseline;
+  if (!baseline) return;
+  const data = baseline.status === "ok" ? baseline.data : null;
+  const items = data?.items || [];
+  const ours = sharedRanks();
+  const shared = ours ? items.filter((item) => ours.has(item.id)).length : 0;
+  $("baseline-caption").textContent = baseline.status === "loading" ? "Encoding the query with CLIP and scoring every catalog image..."
+    : data ? `${items.length} items by cosine similarity · “${data.query}”${ours ? ` · ${shared} of ${items.length} also in Fashion Search results` : ""}` : "";
+  $("baseline-caption").hidden = !$("baseline-caption").textContent;
+  $("baseline-grid").querySelectorAll("[data-baseline-item]").forEach((card) => {
+    const oursRank = ours?.get(items[Number(card.dataset.baselineItem)]?.id);
+    card.classList.toggle("shared", Boolean(oursRank));
+    card.querySelector(".card-subtitle").textContent = oursRank ? `Also #${oursRank} in Fashion Search` : ours ? "Not in Fashion Search results" : "CLIP image match";
+  });
+  $("baseline-table").innerHTML = items.length ? `<table><caption class="sr-only">CLIP baseline cosine scores</caption><thead><tr><th scope="col">Rank</th><th scope="col">Item</th><th scope="col">Type</th><th scope="col">Cosine</th><th scope="col">Fashion Search rank</th></tr></thead><tbody>${items.map((item, index) => `<tr><td>${index + 1}</td><td><button type="button" data-baseline-item="${index}" aria-label="Inspect ${escapeHTML(item.id)}">${escapeHTML(item.id)}</button></td><td>${escapeHTML(item.type_name || item.type_code || "Garment")}</td><td><strong>${score(item.score)}</strong></td><td>${ours?.get(item.id) ?? (ours ? "-" : "N/A")}</td></tr>`).join("")}</tbody></table>` : "";
+  applyView();
+}
+
+// Brings the main results into view once they arrive; waits while a dialog is open.
+function revealResults() {
+  if (document.querySelector("dialog[open]")) { state.revealPending = true; return; }
+  state.revealPending = false;
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  $("results-head").scrollIntoView({behavior: reduceMotion ? "auto" : "smooth", block: "start"});
+}
+
+async function runBaseline(payload, attempt) {
+  if (!state.config?.baseline_ready) {
+    state.baseline = {status: "unavailable", attempt};
+    renderBaseline();
+    return;
+  }
+  state.baseline = {status: "loading", attempt, limit: payload.limit};
+  renderBaseline();
+  let result;
+  try {
+    // The first request after a server start may wait for the CLIP model to load.
+    const data = await api("/api/baseline", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({query: payload.query, limit: payload.limit}), signal: AbortSignal.timeout(180000)});
+    result = {status: "ok", attempt, data};
+  } catch (error) {
+    result = {status: "error", attempt, error: error.name === "TimeoutError" ? "The baseline took too long." : error.message || "Could not reach the baseline endpoint."};
+  }
+  if (state.attempt !== attempt) return;
+  state.baseline = result;
+  renderBaseline();
 }
 
 function tags(filters, excluded = false) {
@@ -225,6 +320,20 @@ function openItem(index) {
   $("item-dialog").showModal();
 }
 
+function openBaselineItem(index) {
+  const item = state.baseline?.data?.items?.[index];
+  if (!item) return;
+  const ours = sharedRanks();
+  const oursRank = ours?.get(item.id);
+  $("item-dialog-content").innerHTML = `<div class="dialog-layout"><div>${imageMarkup(item, "dialog-image")}</div><div class="dialog-copy"><p class="eyebrow">BASELINE RANK ${String(index + 1).padStart(2, "0")} / CLIP</p><h2 id="item-dialog-title">${escapeHTML(item.type_name || item.type_code || "Garment")}</h2><p>${escapeHTML(item.id)}</p>
+    <div class="score-breakdown"><div class="score-row"><span>Cosine</span><span></span><strong>${score(item.score)}</strong></div></div>
+    <p class="dialog-note">Cosine similarity between the CLIP ViT-L/14 embeddings of the raw query text and this item’s image, from −1 to 1. No parsing, filters or reranking were applied.</p>
+    <h3>Fashion Search</h3><p>${oursRank ? `Also ranked #${oursRank} by Fashion Search for this query.` : ours ? "Not in the Fashion Search results for this query." : "Fashion Search results for this query are not available."}</p>
+  </div></div>`;
+  handleImageErrors($("item-dialog-content"));
+  $("item-dialog").showModal();
+}
+
 function setBusy(busy) {
   state.busy = busy;
   $("search-button").disabled = busy;
@@ -268,12 +377,18 @@ $("search-form").addEventListener("submit", async (event) => {
   }
   const payload = {query, model: $("model").value.trim(), limit: Number($("limit").value), min_score: Number($("min-score").value), min_confidence: Number($("min-confidence").value), weights};
   state.lastAttemptFailed = false;
+  const attempt = ++state.attempt;
+  state.revealPending = false;
   const started = Date.now();
+  let succeeded = false;
   setBusy(true);
+  runBaseline(payload, attempt);
   notice("Running query parsing, graph retrieval and reranking...", "loading");
   const timer = setInterval(() => notice(`Search in progress · ${Math.round((Date.now() - started) / 1000)}s elapsed. Waiting for the retrieval response.`, "loading"), 1000);
   try {
     state.run = await api("/api/search", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload), signal: AbortSignal.timeout(240000)});
+    state.runAttempt = attempt;
+    succeeded = true;
     notice(`Found ${state.run.result_count} ranked ${state.run.result_count === 1 ? "match" : "matches"} in ${(state.run.timings.total_ms / 1000).toFixed(1)}s. Constraints, Cypher and ranking evidence are available below.`);
   } catch (error) {
     state.lastAttemptFailed = true;
@@ -284,6 +399,8 @@ $("search-form").addEventListener("submit", async (event) => {
     setBusy(false);
     renderItems();
     renderInsights();
+    renderBaselineOverlap();
+    if (succeeded) revealResults();
   }
 });
 
@@ -293,6 +410,9 @@ document.querySelectorAll("[data-query]").forEach((button) => button.addEventLis
 }));
 document.querySelectorAll("[data-open-method]").forEach((button) => button.addEventListener("click", () => $("method-dialog").showModal()));
 document.querySelectorAll("[data-close-dialog]").forEach((button) => button.addEventListener("click", () => button.closest("dialog").close()));
+document.querySelectorAll("dialog").forEach((dialog) => dialog.addEventListener("close", () => {
+  if (state.revealPending) revealResults();
+}));
 document.querySelectorAll("dialog").forEach((dialog) => dialog.addEventListener("click", (event) => {
   if (event.target !== dialog) return;
   const rect = dialog.getBoundingClientRect();
@@ -314,6 +434,10 @@ for (const mode of ["grid", "table"]) $(`${mode}-view`).addEventListener("click"
 for (const id of ["results-grid", "ranking-table"]) $(id).addEventListener("click", (event) => {
   const button = event.target.closest("[data-item]");
   if (button) openItem(Number(button.dataset.item));
+});
+for (const id of ["baseline-grid", "baseline-table"]) $(id).addEventListener("click", (event) => {
+  const button = event.target.closest("[data-baseline-item]");
+  if (button) openBaselineItem(Number(button.dataset.baselineItem));
 });
 $("revise-query").addEventListener("click", () => { $("query").focus(); $("query").scrollIntoView({block: "center"}); });
 async function copyRunText(buttonId, codeId, text) {
@@ -351,7 +475,8 @@ $("expand-cypher").addEventListener("click", () => {
 });
 $("export-run").addEventListener("click", () => {
   if (!state.run || state.busy) return;
-  const blob = new Blob([JSON.stringify(state.run, null, 2)], {type: "application/json"});
+  const baseline = state.baseline?.status === "ok" && state.baseline.attempt === state.runAttempt ? state.baseline.data : null;
+  const blob = new Blob([JSON.stringify(baseline ? {...state.run, baseline} : state.run, null, 2)], {type: "application/json"});
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -371,7 +496,7 @@ async function init() {
       updateWeightControls();
     }
     $("model-options").innerHTML = state.config.models.map((model) => `<option value="${escapeHTML(model)}"></option>`).join("");
-    $("runtime-label").innerHTML = `<span class="status-dot${state.config.ready ? " live" : ""}"></span>` + (state.config.ready ? " Live search configured" : state.config.preview ? " Catalog preview · Search offline" : " Catalog preview · Search not configured");
+    $("runtime-label").innerHTML = `<span class="status-dot${state.config.ready ? " live" : ""}"></span>` + (state.config.ready ? ` Live search configured${state.config.baseline_ready ? " · CLIP baseline" : ""}` : state.config.preview ? " Catalog preview · Search offline" : " Catalog preview · Search not configured");
   } else {
     $("runtime-label").textContent = "Server unavailable";
     notice("Could not connect to the server. Reload the page after checking the server is running.", "error");
