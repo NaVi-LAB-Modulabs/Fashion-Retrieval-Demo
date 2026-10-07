@@ -30,8 +30,9 @@ Unlike pure embedding search, a request is parsed into hard constraints (categor
 
 - Natural-language query parsing extracts category, positive, excluded and directly named attributes, a visual description, and style-axis targets.
 - Ranking evidence is available for every result: component scores, mapped attributes, the generated Cypher (embedding parameters redacted), stage timings, and a JSON run export. For external users this evidence is **secondary**. Results come first, and evidence stays available on demand without dominating the screen.
+- A CLIP ViT-L/14 text-to-image baseline (raw query vs. image embeddings, no filters) is shown above the results for research comparison, with shared items marked. It returns first, so visitors read it while the main search runs; the page then scrolls to the main results. It runs on the server with an ONNX export of the CLIP text encoder (no PyTorch), so it also works on Vercel once the model file is provided at build time.
 - Adjustable settings: parser and threshold controls, "Min. attribute match", and scoring weights (default 55:35:10 for description, graph attributes and style).
-- Images are served only from the local `sample_images/` catalog (5,000 IDs across five categories, listed in `sample_ids.json`). Missing images show a placeholder.
+- Images are served only from the local `public/images/` catalog (CDN on Vercel) (5,000 IDs across five categories, listed in `sample_ids.json`). Missing images show a placeholder.
 - Current stack: FastAPI serving static HTML/CSS/JS with no frontend build. This is the current state, not a binding constraint; a framework may be introduced if needed.
 - UI language is currently English. Korean UI is under consideration (open decision).
 
@@ -42,7 +43,7 @@ Unlike pure embedding search, a request is parsed into hard constraints (categor
 
 ## Evidence on Hand
 
-- 5,000 real garment images in `sample_images/` (Fashion200K samples).
+- 5,000 real garment images in `public/images/` (Fashion200K samples).
 - Retrieval flow diagram: `web/search-flow.svg`, `web/search-flow.png`.
 - No user testimonials, usage metrics, benchmarks or quality evaluations exist. Do not fabricate any.
 
