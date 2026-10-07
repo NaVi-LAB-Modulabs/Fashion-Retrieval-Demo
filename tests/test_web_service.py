@@ -231,6 +231,31 @@ class RetrievalTests(unittest.TestCase):
         service.image_index.cache_clear()
 
 
+class Neo4jReadRetryTests(unittest.TestCase):
+    def read(self, *outcomes):
+        driver = MagicMock()
+        work = MagicMock(side_effect=outcomes)
+        with patch.object(service, "neo4j_driver", return_value=driver):
+            return service.neo4j_read(work), work
+
+    def test_dead_connection_is_retried_once_on_a_new_session(self):
+        from neo4j.exceptions import ServiceUnavailable, SessionExpired
+        from fashion_how_graphdb.diagnostics import RetrievalFailure
+        for error in (SessionExpired("defunct"), ServiceUnavailable("gone"),
+                      RetrievalFailure("candidate selection", SessionExpired("defunct"))):
+            with self.subTest(error=type(error).__name__):
+                result, work = self.read(error, ["row"])
+                self.assertEqual(result, ["row"])
+                self.assertEqual(work.call_count, 2)
+
+    def test_persistent_or_unrelated_errors_are_not_retried_further(self):
+        from neo4j.exceptions import CypherSyntaxError, SessionExpired
+        with self.assertRaises(SessionExpired):
+            self.read(SessionExpired("defunct"), SessionExpired("still defunct"))
+        with self.assertRaises(CypherSyntaxError):
+            self.read(CypherSyntaxError("bad query"), ["row"])
+
+
 class PreviewHTTPTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

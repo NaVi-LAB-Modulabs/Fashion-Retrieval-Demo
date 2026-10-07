@@ -13,7 +13,7 @@ from typing import Any
 from urllib.parse import quote
 
 from . import hybrid_search, search
-from .diagnostics import retrieval_stage
+from .diagnostics import RetrievalFailure, retrieval_stage
 from .neo4j_config import (
     DEFAULT_NEO4J_DATABASE, DEFAULT_NEO4J_PASSWORD,
     DEFAULT_NEO4J_URI, DEFAULT_NEO4J_USER,
@@ -108,8 +108,34 @@ def neo4j_driver() -> Any:
     from neo4j import GraphDatabase
     return GraphDatabase.driver(
         DEFAULT_NEO4J_URI, auth=(DEFAULT_NEO4J_USER, DEFAULT_NEO4J_PASSWORD),
-        connection_timeout=15.0, connection_acquisition_timeout=20.0,
+        connection_timeout=15.0, connection_acquisition_timeout=10.0,
+        # Pooled connections can die while idle (network change, server-side idle close);
+        # check ones idle for 30 s before reuse so a dead one is replaced, not used.
+        # A check against an unreachable peer waits out the acquisition timeout.
+        liveness_check_timeout=30.0,
     )
+
+
+def neo4j_read(work: Any) -> Any:
+    """Run read-only `work(session)`, retrying once if a pooled connection was dead.
+
+    The failed attempt discards the dead connections, so the retry gets a fresh one.
+    """
+    from neo4j import exceptions
+    retryable = tuple(error for error in (
+        exceptions.ServiceUnavailable, exceptions.SessionExpired,
+        getattr(exceptions, "ConnectionAcquisitionTimeoutError", None),  # neo4j >= 6
+    ) if error)
+    for attempt in (1, 2):
+        try:
+            with neo4j_driver().session(**({"database": DEFAULT_NEO4J_DATABASE} if DEFAULT_NEO4J_DATABASE else {})) as session:
+                return work(session)
+        except RetrievalFailure as exc:
+            if attempt == 2 or not isinstance(exc.cause, retryable):
+                raise
+        except retryable:
+            if attempt == 2:
+                raise
 
 
 def validate_request(payload: dict[str, Any]) -> dict[str, Any]:
@@ -156,8 +182,8 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
             request["query"], client=openai_client(), model=request["model"],
         )
     parsed = perf_counter()
-    driver = neo4j_driver()
-    with driver.session(**({"database": DEFAULT_NEO4J_DATABASE} if DEFAULT_NEO4J_DATABASE else {})) as session:
+
+    def select_and_fetch(session: Any) -> tuple[Any, ...]:
         with retrieval_stage("candidate selection"):
             candidate_ids, embedding = hybrid_search.select_candidates(
                 session, extraction, request["query"], client=openai_client(),
@@ -172,6 +198,9 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
             raw_results = [
                 dict(row["result"]) for row in session.run(cypher, **query_params)
             ] if candidate_ids else []
+        return candidate_ids, embedding, cypher, query_params, raw_results
+
+    candidate_ids, embedding, cypher, query_params, raw_results = neo4j_read(select_and_fetch)
     retrieved = perf_counter()
     with retrieval_stage("reranking"):
         items = hybrid_search.rerank(
