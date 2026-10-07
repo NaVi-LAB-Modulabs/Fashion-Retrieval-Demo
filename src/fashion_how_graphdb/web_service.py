@@ -22,7 +22,8 @@ from .taxonomy import CATEGORY_NAMES
 from .llm import default_model
 
 ROOT = Path(__file__).resolve().parents[2]
-IMAGE_DIR = ROOT / "sample_images"
+# Served from the CDN on Vercel (public/ is static there) and by the /images route locally.
+IMAGE_DIR = ROOT / "public" / "images"
 SAMPLE_IDS_FILE = ROOT / "sample_ids.json"
 
 
@@ -40,8 +41,13 @@ def sample_ids() -> dict[str, list[str]]:
 
 
 @lru_cache(maxsize=1)
+def manifest_ids() -> frozenset[str]:
+    return frozenset(item_id for ids in sample_ids().values() for item_id in ids)
+
+
+@lru_cache(maxsize=1)
 def image_index() -> dict[str, Path]:
-    allowed = {item_id for ids in sample_ids().values() for item_id in ids}
+    allowed = manifest_ids()
     return {
         path.name: path for path in sorted(IMAGE_DIR.rglob("*"))
         if path.is_file() and path.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}
@@ -51,13 +57,11 @@ def image_index() -> dict[str, Path]:
 
 
 def image_url(item_id: Any) -> str | None:
-    if not isinstance(item_id, str):
+    # Every manifest ID has public/images/<id>.jpg. The manifest, not the filesystem, decides,
+    # because the deployed function bundle excludes public/.
+    if not isinstance(item_id, str) or item_id not in manifest_ids():
         return None
-    for extension in (".jpg", ".jpeg", ".png", ".webp"):
-        name = item_id + extension
-        if name in image_index():
-            return f"/images/{quote(name)}"
-    return None
+    return f"/images/{quote(item_id)}.jpg"
 
 
 def configuration(*, preview: bool = False) -> dict[str, Any]:
@@ -68,7 +72,7 @@ def configuration(*, preview: bool = False) -> dict[str, Any]:
         "preview": preview,
         "default_model": default_model(),
         "models": list(dict.fromkeys([default_model(), "gpt-4.1-mini", "gpt-4.1"])),
-        "image_count": len(image_index()),
+        "image_count": len(manifest_ids()),
         "type_count": len(catalog["item_types"]),
         "style_axis_count": len(catalog["style_axes"]),
         "type_names": CATEGORY_NAMES,

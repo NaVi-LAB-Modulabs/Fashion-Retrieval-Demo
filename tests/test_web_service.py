@@ -62,8 +62,8 @@ class RetrievalTests(unittest.TestCase):
             result = service.retrieve({"query": "a blue blouse", **settings})
         return result, session, client
 
-    @patch.object(service, "image_index", return_value={"51727804_0.jpg": Path("51727804_0.jpg")})
-    def test_graph_results_keep_evidence_and_hide_unknown_properties(self, image_index):
+    @patch.object(service, "manifest_ids", return_value=frozenset({"51727804_0"}))
+    def test_graph_results_keep_evidence_and_hide_unknown_properties(self, manifest_ids):
         result, session, client = self.run_search([
             {"id": "51727804_0", "type_code": "BL", "text_score": None,
              "description_embedding": [1, 2, 3], "internal_note": "private",
@@ -209,7 +209,7 @@ class RetrievalTests(unittest.TestCase):
 
     def test_preview_never_claims_search_scores_or_connectivity(self):
         with patch.object(service, "sample_ids", return_value={"tops": ["123_0"]}), \
-             patch.object(service, "image_index", return_value={"123_0.jpg": Path("123_0.jpg")}):
+             patch.object(service, "manifest_ids", return_value=frozenset({"123_0"})):
             data = service.catalog_preview()
         self.assertFalse(data["ranked"])
         self.assertEqual(data["source"], "local")
@@ -221,7 +221,7 @@ class RetrievalTests(unittest.TestCase):
 
     def test_image_index_only_serves_manifest_ids(self):
         with TemporaryDirectory() as directory, patch.object(service, "IMAGE_DIR", Path(directory)), \
-             patch.object(service, "sample_ids", return_value={"tops": ["123_0"]}):
+             patch.object(service, "manifest_ids", return_value=frozenset({"123_0"})):
             (Path(directory) / "123_0.jpg").write_bytes(b"image")
             (Path(directory) / "999_0.jpg").write_bytes(b"image")
             service.image_index.cache_clear()
