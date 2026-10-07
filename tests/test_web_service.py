@@ -276,7 +276,7 @@ class PreviewHTTPTests(unittest.TestCase):
                 self.assertEqual(response.status, 200)
                 self.assertTrue(response.read())
         with urlopen(self.base + "/") as response:
-            self.assertIn(b"/assets/app.js?v=20261006-shop", response.read())
+            self.assertIn(b"/assets/app.js?v=20261008-baseline-first", response.read())
         with urlopen(self.base + "/api/config") as response:
             self.assertFalse(json.load(response)["ready"])
 

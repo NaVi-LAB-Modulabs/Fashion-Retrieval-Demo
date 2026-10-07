@@ -198,6 +198,21 @@ td button { background: transparent; border: 0; padding: 2px 0; text-decoration:
 tbody tr { transition: background .15s; }
 tbody tr:hover { background: var(--sunken); }
 
+/* Baseline comparison: sits above the results (it finishes first) and uses the same card grid. */
+.baseline { margin-bottom: 48px; padding-bottom: 8px; border-bottom: 1px solid var(--line-strong); }
+.baseline-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px 16px; flex-wrap: wrap; }
+#baseline-title { display: flex; gap: 10px; align-items: baseline; font-size: 22px; font-weight: 600; letter-spacing: -.03em; line-height: 1.1; }
+.method-chip { border: 1px solid var(--line-strong); border-radius: 999px; padding: 5px 12px; font: 11px var(--mono); color: var(--muted); white-space: nowrap; }
+.baseline-description { font-size: 13px; color: var(--ink-2); line-height: 1.6; margin-top: 10px; max-width: 80ch; }
+.baseline .results-caption { margin-top: 4px; }
+.baseline-message { padding: 20px 22px; border: 1px dashed var(--line-strong); border-radius: var(--radius); font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.baseline-message.error { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); }
+.card-score.cosine strong::after { content: ' cosine'; }
+.item-card.shared .card-subtitle { color: var(--ink-2); }
+.item-card.shared .card-subtitle::before { content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: var(--accent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 30%, transparent); }
+.baseline-query { margin-top: 32px; border-top: 1px solid var(--line); }
+.baseline-params { font: 11.5px/1.6 var(--mono); color: var(--muted); margin-top: 10px; overflow-wrap: anywhere; }
+
 .empty-state { border-radius: var(--radius); padding: 56px 32px; background: var(--surface); border: 1px dashed var(--line-strong); }
 .empty-state h3 { font-size: 20px; font-weight: 600; letter-spacing: -.02em; margin-bottom: 8px; }
 .empty-state p { font-size: 14px; color: var(--muted); line-height: 1.6; max-width: 52ch; }
@@ -286,6 +301,9 @@ dialog::backdrop { background: rgb(12 12 14 / .45); backdrop-filter: blur(4px); 
 .method-list h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
 .method-list p, .method-note { font-size: 13px; line-height: 1.75; color: var(--muted); }
 .method-note { background: var(--sunken); border-radius: var(--radius); padding: 16px 20px; margin-top: 16px; }
+.method-baseline { margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--line); }
+.method-baseline h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+.method-baseline p { font-size: 13px; line-height: 1.75; color: var(--muted); }
 
 /* Loading */
 .skeleton .card-image { background: linear-gradient(110deg, var(--sunken) 30%, var(--surface) 50%, var(--sunken) 70%); background-size: 200% 100%; animation: shimmer 1.6s linear infinite; }
