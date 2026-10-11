@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from importlib.metadata import version
 import hashlib
 import json
 import os
+import platform
 from pathlib import Path
 import tempfile
 from threading import Lock
@@ -94,6 +96,13 @@ def normalized_vectors(values: Any) -> Any:
     return vectors / norms
 
 
+@lru_cache(maxsize=1)
+def runtime_provenance() -> dict:
+    return {"onnxruntime": version("onnxruntime"), "tokenizers": version("tokenizers"),
+            "numpy": version("numpy"), "platform": platform.system(),
+            "machine": platform.machine(), "provider": "CPUExecutionProvider"}
+
+
 def encode_text(query: str) -> tuple[Any, int, bool]:
     import numpy as np
     query = normalize_query(query)
@@ -113,6 +122,7 @@ def encode_text(query: str) -> tuple[Any, int, bool]:
 
     embedding = cached("clip_text", {"query": query, "model": MODEL_REPO, "revision": MODEL_REVISION,
                                     "encoder_hash": ASSETS["text"][2], "tokenizer_hash": ASSETS["tokenizer"][2],
+                                    "runtime": runtime_provenance(),
                                     "preprocessing": "eos-padding-77-v1"}, compute).value
     return np.asarray(embedding, dtype=np.float32), count, count > TOKEN_LIMIT
 
@@ -218,6 +228,7 @@ def rank_vector(vector: Any, *, limit: int, candidate_ids: list[str] | None = No
             "scope": "same_candidates" if allowed is not None else "catalog",
             "missing_candidate_ids": sorted(allowed - {items[position]["id"] for position in positions}) if allowed is not None else [],
             "score_type": "raw_cosine", "model": MODEL_REPO, "model_revision": MODEL_REVISION,
+            "runtime": runtime_provenance(),
             "index_revision": index_revision(), "reranked": allowed is not None}
 
 

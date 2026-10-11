@@ -239,7 +239,7 @@ function renderClipInsights(run) {
   const params = {model: run.model, model_revision: run.model_revision, index_revision: run.index_revision,
     dimensions: 512, provider: "CPUExecutionProvider", scope: run.scope,
     token_count: run.token_count, token_limit: 77, truncated: run.truncated,
-    missing_candidate_ids: run.missing_candidate_ids || []};
+    missing_candidate_ids: run.missing_candidate_ids || [], runtime: run.runtime};
   $("search-insights").innerHTML = `<dl>${Object.entries(params).map(([key, value]) => `<div class="insight-section"><dt class="insight-label">${escapeHTML(label(key))}</dt><dd>${escapeHTML(typeof value === "object" ? JSON.stringify(value) : value)}</dd></div>`).join("")}</dl>`;
   $("params-code").textContent = JSON.stringify(params, null, 2);
   $("parameter-list").innerHTML = `<p>Raw cosine: L2-normalized text vector · image vector</p><p class="muted">${run.scope === "catalog" ? "Full catalog; no graph or style filters." : "Hybrid fetched candidate pool; no final hybrid score threshold."}</p>`;

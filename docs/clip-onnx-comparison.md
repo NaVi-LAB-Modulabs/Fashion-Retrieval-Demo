@@ -17,6 +17,12 @@ The sibling project's `clip_similarity.py` and `clip_retrieval_baseline.py`
 informed the normalization, product ranking and Recall@K evaluation. This is
 not an exact reproduction of its OpenCLIP `laion2b_s34b_b79k` baseline, nor of
 unquantized OpenAI CLIP. Quantization and training checkpoints affect rankings.
+Search responses record ONNX Runtime/tokenizer/NumPy versions and CPU platform;
+runtime provenance also participates in cache keys. Different kernels, runtime
+versions or CPU architectures can produce small quantized-score differences,
+including rank changes for close scores. Run comparisons within the same
+environment; fixed model/index hashes do not promise cross-platform bitwise
+equivalence. Both CLIP comparison scopes reuse the same query vector per request.
 
 ## Search Calculation
 

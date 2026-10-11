@@ -41,7 +41,11 @@ def main():
             image_hashes[item["id"]] = image_hash
             checkpoint = checkpoint_dir / f"{item['id']}-{image_hash}.npy"
             if checkpoint.is_file():
-                batch.append(clip.normalized_vectors(np.load(checkpoint, allow_pickle=False).reshape(1, -1))[0])
+                vector = np.load(checkpoint, allow_pickle=False)
+                if (vector.shape != (clip.DIMENSION,) or not np.isfinite(vector).all()
+                        or not np.isclose(np.linalg.norm(vector), 1, atol=1e-4)):
+                    raise ValueError(f"Invalid CLIP image checkpoint: {item['id']}")
+                batch.append(vector)
             else:
                 batch.append(None)
                 missing.append((index, item, checkpoint))
@@ -61,6 +65,7 @@ def main():
                 "embeddings_sha256": clip.file_digest(embedding_path),
                 "image_preprocessing": "rgb-bicubic-shortest224-center224-clip-normalization-v1",
                 "catalog_image_revision": clip.fingerprint(image_hashes), "items": items}
+    manifest["image_encoder_runtime"] = clip.runtime_provenance()
     (args.output_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(f"Saved {len(items)} normalized CLIP image vectors to {args.output_dir}")
 

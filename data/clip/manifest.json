@@ -20009,5 +20009,13 @@
       "id": "91438281_0",
       "category": "skirts"
     }
-  ]
+  ],
+  "image_encoder_runtime": {
+    "onnxruntime": "1.23.2",
+    "tokenizers": "0.23.3",
+    "numpy": "2.4.6",
+    "platform": "Darwin",
+    "machine": "x86_64",
+    "provider": "CPUExecutionProvider"
+  }
 }

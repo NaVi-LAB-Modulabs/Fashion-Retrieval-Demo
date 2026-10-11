@@ -175,6 +175,7 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
         "provider": os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
         "style_reference_revision": style_references.reference_revision() if request["style_mode"] == "reference" else None,
         "clip_index_revision": clip_onnx.index_revision() if request["compare_clip"] else None,
+        "clip_runtime": clip_onnx.runtime_provenance() if request["compare_clip"] else None,
     }
     entry = cached("search", signature, lambda: _retrieve_uncached(request))
     response = entry.value
