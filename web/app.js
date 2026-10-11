@@ -194,7 +194,7 @@ function renderInsights() {
   $("extraction-code").textContent = JSON.stringify(extracted, null, 2);
   const settings = run.settings;
   $("run-summary").textContent = `Parser: ${settings.model} · Results: ${settings.limit} · Min. score: ${settings.min_score ?? "off"} · Min. attribute match: ${settings.min_confidence ?? "off"} · Weights: ${effectiveWeightLabel(settings.weights || {text: .55, graph: .35, style: .10})}. ${run.reranked ? "Weighted reranking applied." : "Graph ranking only."}`;
-  $("run-state").textContent = state.lastAttemptFailed ? "Previous run" : "Completed";
+  $("run-state").textContent = state.lastAttemptFailed ? "Previous run" : run.cache?.hit ? "Cached result" : "Completed";
   $("parse-time").textContent = `${run.timings.parse_ms} ms`;
   $("graph-time").textContent = `${run.timings.graph_ms} ms`;
   $("rerank-time").textContent = `${run.timings.rerank_ms} ms`;
@@ -274,7 +274,7 @@ $("search-form").addEventListener("submit", async (event) => {
   const timer = setInterval(() => notice(`Search in progress · ${Math.round((Date.now() - started) / 1000)}s elapsed. Waiting for the retrieval response.`, "loading"), 1000);
   try {
     state.run = await api("/api/search", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload), signal: AbortSignal.timeout(240000)});
-    notice(`Found ${state.run.result_count} ranked ${state.run.result_count === 1 ? "match" : "matches"} in ${(state.run.timings.total_ms / 1000).toFixed(1)}s. Constraints, Cypher and ranking evidence are available below.`);
+    notice(`Found ${state.run.result_count} ranked ${state.run.result_count === 1 ? "match" : "matches"} in ${(state.run.timings.total_ms / 1000).toFixed(1)}s.${state.run.cache?.hit ? " Reused the saved result for these search settings." : ""} Constraints, Cypher and ranking evidence are available below.`);
   } catch (error) {
     state.lastAttemptFailed = true;
     const message = error.name === "TimeoutError" ? "The search took too long. Please try a simpler query." : error.message || "Could not connect to the search server.";

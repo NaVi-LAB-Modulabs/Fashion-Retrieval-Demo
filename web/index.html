@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="/assets/styles.css?v=20261006-shop">
-  <script src="/assets/app.js?v=20261006-shop" defer></script>
+  <script src="/assets/app.js?v=20261011-repro" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#query">Skip to search</a>
@@ -102,7 +102,7 @@
       <div class="evidence-grid">
         <section class="query-plan panel" id="query-plan" aria-labelledby="query-title">
           <h3 id="query-title" class="panel-title">Search Cypher</h3>
-          <p class="panel-description">Hard filters run before the attribute top 10 and description top 10 are combined. Description candidates use filtered HNSW; the last query fetches candidate evidence. Embedding values and the full filtered ID list are omitted from displayed parameters.</p>
+          <p class="panel-description">Hard filters run before the attribute top 10 and description top 10 are combined. Description candidates use exact similarity by default; the last query fetches candidate evidence. Embedding values and the full filtered ID list are omitted from displayed parameters.</p>
           <div class="code-block">
             <div class="code-toolbar"><span id="query-state">Not executed</span><div class="code-actions"><label><input id="wrap-cypher" type="checkbox" checked> Wrap</label><button type="button" id="expand-cypher" disabled>Expand</button><button type="button" id="copy-cypher" disabled>Copy query</button></div></div>
             <pre class="cypher-editor" tabindex="0" aria-label="Generated Cypher"><code id="cypher-code">No query has been generated.
@@ -130,13 +130,13 @@ Run retrieval to inspect the final candidate query here.</code></pre>
     <p class="eyebrow">Method reference</p><h2 id="method-title">Retrieval &amp; scoring</h2>
     <figure class="method-flow">
       <a href="/assets/search-flow.svg" target="_blank" rel="noopener" aria-label="Open the retrieval flow diagram at full size">
-        <img src="/assets/search-flow.svg" width="1200" height="1500" loading="lazy" alt="Query parsing, hard filters, attribute top 10 and filtered HNSW top 10, candidate deduplication, and final description, attribute and requested style scoring.">
+        <img src="/assets/search-flow.svg" width="1200" height="1500" loading="lazy" alt="Query parsing, hard filters, attribute top 10 and description top 10, candidate deduplication, and final description, attribute and requested style scoring.">
       </a>
-      <figcaption>Both candidate lists use the filtered items. <a href="/assets/search-flow.png" download>Download PNG</a></figcaption>
+      <figcaption>New searches follow this flow; repeated searches reuse saved results. Both candidate lists use the filtered items. <a href="/assets/search-flow.png" download>Download PNG</a></figcaption>
     </figure>
     <ol class="method-list">
       <li><h3>Apply hard filters</h3><p>A named category limits the search. Directly named attributes, such as white in “white jacket”, require matching graph edges above the attribute match threshold. Excluded attributes remove matching items. Filtering and graph scoring use confidence × coverage for colors, confidence × prominence for patterns and category attributes, and confidence × score for seasons. Attributes without a metric use confidence alone.</p></li>
-      <li><h3>Select two top-10 lists</h3><p>Within the filtered items, select 10 by the combined graph attribute score and approximately 10 nearest descriptions using filtered HNSW. Merge their IDs and remove duplicates, giving at most 20 candidates. With no required attributes, only the description list is used. Exact description similarity is calculated for the combined candidates before final ranking.</p></li>
+      <li><h3>Select two top-10 lists</h3><p>Within the filtered items, select 10 by the combined graph attribute score and 10 nearest descriptions using exact similarity by default. An optional filtered HNSW mode trades accuracy for speed. Merge their IDs and remove duplicates, giving at most 20 candidates. With no required attributes, only the description list is used. Exact description similarity is calculated for the combined candidates before final ranking.</p></li>
       <li><h3>Rank the combined candidates</h3><p>The final score combines description similarity, the same required graph attributes, and only requested style axes. Relative weights are adjustable; defaults are 55:35:10. Inferred attributes do not contribute to graph filtering or scoring.</p></li>
     </ol>
     <div class="method-note">Unavailable or zero-weight components are omitted and remaining weights are normalized. Candidate counts refer to the combined pool after hard filtering, before the final score threshold. Scores are retrieval signals, not probabilities.</div>

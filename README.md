@@ -98,7 +98,65 @@ Optional:
 NEO4J_DATABASE
 OPENAI_MODEL
 OPENAI_EMBEDDING_MODEL
+FASHION_CACHE_ENABLED
+FASHION_CACHE_PATH
+FASHION_CACHE_TTL_SECONDS
+FASHION_CACHE_MAX_ENTRIES
+FASHION_DATASET_REVISION
+FASHION_VECTOR_SEARCH_MODE
 ```
+
+### Reproducible searches
+
+Successful query parsing, query embeddings, and full web search results are cached
+in SQLite by default. Locally, the file is `.cache/retrieval.sqlite3` and survives
+server restarts. Parsing and embedding caches also apply to the CLI. The full
+search cache includes normalized query text, resolved parser model, embedding
+model, database identity, vector search mode/index, thresholds, weights, and result
+limit. Source/taxonomy changes invalidate entries automatically on server restart.
+Concurrent identical misses share a SQLite lease so local workers compute once;
+failed calls are not stored. Whitespace and Unicode NFC are normalized, while
+case and punctuation are preserved.
+
+Known UI model aliases are pinned to snapshots: `gpt-5.4-mini-2026-03-17`,
+`gpt-4.1-mini-2025-04-14`, and `gpt-4.1-2025-04-14`. Explicit snapshot IDs and other
+model IDs are preserved. GPT-4.1/GPT-4o requests use `temperature=0`; reasoning
+models retain compatible provider defaults. The Responses API does not expose
+`seed`, so no unsupported seed is sent. Provider prompt caching is distinct from
+this application's saved-result cache and does not freeze generated answers.
+See the official [Responses API reference](https://developers.openai.com/api/reference/python/resources/responses/methods/create)
+and [GPT-5.4 mini snapshots](https://developers.openai.com/api/docs/models/gpt-5.4-mini).
+
+`FASHION_VECTOR_SEARCH_MODE=exact` is the default. It calculates cosine similarity
+over every model-compatible item that passed the graph filters and sorts by score,
+then ID, before selecting 10 description candidates. This removes ANN candidate
+approximation but can be slower with broad queries. Set it to `hnsw` to restore
+filtered approximate search; a full search cache hit skips both search modes.
+Filter lists are deduplicated and sorted; mapped attributes and style targets also
+have a stable order. Final score ties are resolved by item ID.
+
+Cache entries have no time expiry by default (`FASHION_CACHE_TTL_SECONDS=0`), with
+up to `FASHION_CACHE_MAX_ENTRIES=4096` entries per layer. Set a positive TTL for
+freshness or `FASHION_CACHE_ENABLED=0` to bypass all layers. After changing graph
+data, stored embeddings, local image files, or the vector index, increment
+`FASHION_DATASET_REVISION` in `.env` or the deployment environment and restart or
+redeploy. Cached searches intentionally keep the old result until invalidation,
+expiry, or eviction; database changes are not detected automatically. Keep the
+dataset immutable during a demo for uncached queries as well.
+
+Web responses include `cache.hit`, `cache.created_at`, original computation
+timings, and a SHA-256 query embedding fingerprint. A cache hit reports zero
+parser/graph/reranking time and measures cache retrieval separately in `total_ms`;
+the UI labels reused results. Durations and cache status are operational metadata
+and can still differ between requests.
+
+On Vercel, the default file lives in the instance's temporary directory. It is
+neither shared across instances nor durable across cold starts/redeployments.
+`FASHION_CACHE_PATH` can point to a writable persistent filesystem on a local or
+stateful server. A multi-instance serverless deployment needs a shared cache
+backend to preserve the first answer globally. The current SQLite implementation
+coordinates only workers sharing the same file. Do not upload local caches;
+they contain query text and saved search results.
 
 ## Fashion200K sample images
 
@@ -145,7 +203,7 @@ directly named attributes, a positive visual description, and requested
 style axes. Category, required attribute and excluded attribute filters run
 before candidate selection. Within the filtered items, two independent lists
 are selected: the top 10 by the combined graph attribute score and the top 10 by
-description similarity using filtered HNSW. Their IDs are merged and deduplicated, giving at most
+description similarity using exact cosine by default (optional filtered HNSW). Their IDs are merged and deduplicated, giving at most
 20 candidates for final scoring. With no required attributes, only the description
 list is used. The final result limit does not enlarge either candidate list.
 Directly named positive
@@ -171,7 +229,7 @@ score components are omitted before the remaining weights are normalized.
 
 ### Retrieval flow
 
-![Retrieval flow: hard filters, attribute top 10 and filtered HNSW top 10, candidate union, and final weighted ranking](web/search-flow.svg)
+![Retrieval flow: hard filters, attribute top 10 and description top 10, candidate union, and final weighted ranking](web/search-flow.svg)
 
 [Download the PNG diagram](web/search-flow.png). Both branches use the entire
 hard-filtered population; the description branch additionally requires a matching
@@ -192,7 +250,9 @@ Live search requires `Item.description_embedding` with 3,072 dimensions,
 `Item.description_embedding_model` set to `text-embedding-3-large`.
 The query embedding must use the same model and dimensions as stored items.
 Set `OPENAI_EMBEDDING_MODEL` if the stored item vectors use another model.
-Description selection uses Cypher 25 `SEARCH` against the existing online
+The default exact mode does not require a vector index and scans all eligible
+vectors with `vector.similarity.cosine`. Optional HNSW description selection uses
+Cypher 25 `SEARCH` against the existing online
 `item_description_embedding_filtered` vector index. It must index
 `description_embedding` and include `id` as an additional filter property,
 with support for `WHERE item.id IN $filtered_ids` inside `SEARCH` (Neo4j 2026.06+
@@ -201,10 +261,10 @@ the index name. The graph query first collects all IDs that pass the hard filter
 and calculates their attribute scores. HNSW then searches within eligible IDs
 whose embedding model matches the query model, returning up to 10 approximate
 neighbors. The full eligible ID list is not truncated to the attribute top 10.
-Exact `vector.similarity.cosine` is computed only for the combined candidates
-(at most 20) before final reranking. The graph filtering and ID transfer still
+In HNSW mode, exact `vector.similarity.cosine` is computed only for the combined
+candidates (at most 20) before final reranking. The graph filtering and ID transfer still
 depend on the size of the eligible population. Search does not create indexes
-or modify items; an unsupported SEARCH clause or missing index raises an error
+or modify items; in HNSW mode, an unsupported SEARCH clause or missing index raises an error
 instead of silently switching to an exhaustive vector scan.
 
 ```text

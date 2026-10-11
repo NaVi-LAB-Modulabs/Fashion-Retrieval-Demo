@@ -18,7 +18,7 @@ Fashion Search turns a natural-language clothing request into ranked garment ima
 
 ## Positioning
 
-Unlike pure embedding search, a request is parsed into hard constraints (category, required and excluded attributes) that filter the graph before any similarity ranking. Two candidate lists, graph-attribute matches and description similarity (filtered HNSW), are merged and reranked with description, attribute and style-axis scores. So "not white" really excludes white, and every result has an explainable reason.
+Unlike pure embedding search, a request is parsed into hard constraints (category, required and excluded attributes) that filter the graph before any similarity ranking. Two candidate lists, graph-attribute matches and description similarity (exact cosine by default, with optional filtered HNSW), are merged and reranked with description, attribute and style-axis scores. So "not white" really excludes white, and every result has an explainable reason. Successful searches reuse saved results for the same settings; parser models are pinned to known snapshots.
 
 ## Operating Context
 

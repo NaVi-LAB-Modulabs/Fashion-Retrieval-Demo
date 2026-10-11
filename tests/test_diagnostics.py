@@ -13,6 +13,11 @@ from fashion_how_graphdb.llm import _llm_error
 
 
 class DiagnosticTests(unittest.TestCase):
+    def setUp(self):
+        isolation = patch.dict("os.environ", {"FASHION_CACHE_ENABLED": "0"})
+        isolation.start()
+        self.addCleanup(isolation.stop)
+
     def test_neo4j_failure_keeps_stage_and_code_without_message(self):
         cause = RuntimeError("password=SECRET bolt://private-host:7687 query text")
         cause.code = "Neo.ClientError.Security.Unauthorized"

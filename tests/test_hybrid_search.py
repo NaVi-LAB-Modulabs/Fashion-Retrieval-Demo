@@ -12,6 +12,11 @@ from fashion_how_graphdb import hybrid_search, search
 
 
 class HybridSearchTests(unittest.TestCase):
+    def setUp(self):
+        isolation = patch.dict("os.environ", {"FASHION_CACHE_ENABLED": "0", "FASHION_VECTOR_SEARCH_MODE": "hnsw"})
+        isolation.start()
+        self.addCleanup(isolation.stop)
+
     def test_brown_accent_is_scored_by_coverage_and_filtered_by_product(self):
         extraction = search.normalize_extraction({
             "item_type_codes": ["jackets"],

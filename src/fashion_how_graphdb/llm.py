@@ -8,6 +8,8 @@ import re
 import time
 from typing import Any
 
+from .reproducibility import resolve_model
+
 
 INVALID_JSON_RETRY_PROMPT = "Return the same result as valid JSON only."
 
@@ -192,6 +194,6 @@ def _excerpt(text: Any) -> str:
 
 
 def default_model() -> str:
-    return os.getenv("FASHION_HOW_OPENAI_MODEL") or os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
+    return resolve_model(os.getenv("FASHION_HOW_OPENAI_MODEL") or os.getenv("OPENAI_MODEL", "gpt-5.4-mini"))
 
 

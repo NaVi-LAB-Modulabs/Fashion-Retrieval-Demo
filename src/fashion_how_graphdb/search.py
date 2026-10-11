@@ -33,7 +33,8 @@ from .taxonomy import (
     SEASONS,
     CATEGORY_NAMES,
 )
-from .llm import call_text_json_with_error, default_model
+from .llm import _create_kwargs, call_text_json_with_error, default_model
+from .reproducibility import cached, normalize_query, resolve_model
 
 COMMON_FILTER_GROUPS = {
     "colors": {
@@ -293,19 +294,26 @@ def extract_search_filters(
     client: Any,
     model: str,
 ) -> dict[str, Any]:
-    raw, error = call_text_json_with_error(
-        client=client,
-        model=model,
-        user_prompt=extraction_prompt(query),
-        system_prompt_text=SYSTEM_PROMPT,
-        json_schema=extraction_schema(),
-        json_schema_name="fashion_search_filters",
-    )
-    if raw is None:
-        failure = RuntimeError("Search filter extraction failed")
-        failure.provider_error = error
-        raise failure
-    return normalize_extraction(raw, query=query)
+    query = normalize_query(query)
+    model = resolve_model(model)
+    prompt, schema = extraction_prompt(query), extraction_schema()
+
+    def compute() -> dict[str, Any]:
+        raw, error = call_text_json_with_error(
+            client=client, model=model, user_prompt=prompt,
+            system_prompt_text=SYSTEM_PROMPT, json_schema=schema,
+            json_schema_name="fashion_search_filters",
+        )
+        if raw is None:
+            failure = RuntimeError("Search filter extraction failed")
+            failure.provider_error = error
+            raise failure
+        return normalize_extraction(raw, query=query)
+
+    return cached("parser", {
+        "prompt": prompt, "system": SYSTEM_PROMPT, "schema": schema,
+        "options": _create_kwargs(model), "base_url": str(getattr(client, "base_url", "")),
+    }, compute).value
 
 
 def normalize_extraction(raw: dict[str, Any], *, query: str | None = None) -> dict[str, Any]:
@@ -338,15 +346,15 @@ def normalize_extraction(raw: dict[str, Any], *, query: str | None = None) -> di
     )
 
     return {
-        "item_type_codes": type_codes,
-        "common_filters": [filter_to_dict(item) for item in common_filters],
-        "category_filters": [filter_to_dict(item) for item in category_filters],
-        "excluded_common_filters": [
+        "item_type_codes": sorted(type_codes),
+        "common_filters": _canonical_filters([filter_to_dict(item) for item in common_filters]),
+        "category_filters": _canonical_filters([filter_to_dict(item) for item in category_filters]),
+        "excluded_common_filters": _canonical_filters([
             filter_to_dict(item) for item in excluded_common_filters
-        ],
-        "excluded_category_filters": [
+        ]),
+        "excluded_category_filters": _canonical_filters([
             filter_to_dict(item) for item in excluded_category_filters
-        ],
+        ]),
         "description_query": _normalize_description_query(
             raw.get("description_query"),
         ),
@@ -354,6 +362,17 @@ def normalize_extraction(raw: dict[str, Any], *, query: str | None = None) -> di
             raw.get("style_axis_targets"),
         ),
     }
+
+
+def _canonical_filters(filters: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    # Identical edges must not gain weight because the parser emitted duplicates.
+    merged: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    for item in filters:
+        key = tuple(str(item.get(field, "")) for field in ("scope", "type_code", "group", "value"))
+        previous = merged.get(key)
+        if previous is None or item.get("hard") is True:
+            merged[key] = item
+    return [merged[key] for key in sorted(merged)]
 
 
 def _explicitly_mentions(query: str, value: str) -> bool:
@@ -431,7 +450,8 @@ def _normalize_description_query(raw: Any) -> str:
 def _normalize_style_axis_targets(raw_items: Any) -> list[dict[str, Any]]:
     targets: list[dict[str, Any]] = []
     seen = set()
-    for item in raw_items or []:
+    valid_items = [item for item in (raw_items or []) if isinstance(item, dict)]
+    for item in sorted(valid_items, key=lambda item: json.dumps(item, sort_keys=True)):
         if not isinstance(item, dict):
             continue
         axis = item.get("axis")
@@ -448,7 +468,7 @@ def _normalize_style_axis_targets(raw_items: Any) -> list[dict[str, Any]]:
                 "evidence": _normalize_description_query(item.get("evidence")),
             }
         )
-    return targets
+    return sorted(targets, key=lambda target: target["axis"])
 
 
 def filter_to_dict(search_filter: SearchFilter) -> dict[str, Any]:

@@ -23,6 +23,9 @@ from preview import PreviewHandler
 
 class RetrievalTests(unittest.TestCase):
     def setUp(self):
+        isolation = patch.dict("os.environ", {"FASHION_CACHE_ENABLED": "0", "FASHION_VECTOR_SEARCH_MODE": "hnsw"})
+        isolation.start()
+        self.addCleanup(isolation.stop)
         self.extraction = {
             "item_type_codes": ["tops"],
             "common_filters": [{"group": "colors", "value": "blue", "hard": True}],
@@ -43,7 +46,7 @@ class RetrievalTests(unittest.TestCase):
                 return [{"id": row["id"], "graph_score": service.hybrid_search.graph_score(
                     row.get("mapped_attributes") or [], extraction, params["min_confidence"],
                 )[0], "description_eligible": row.get("text_score") is not None} for row in eligible]
-            if "SEARCH item IN" in cypher:
+            if "ORDER BY text_score DESC, id ASC" in cypher:
                 text = sorted([row for row in rows if row["id"] in params["filtered_ids"]],
                               key=lambda row: (-row["text_score"], row["id"]))[:params["branch_limit"]]
                 return [{"id": row["id"], "text_score": row["text_score"]} for row in text]
@@ -187,6 +190,26 @@ class RetrievalTests(unittest.TestCase):
         self.assertTrue(result["cypher"])
         self.assertIn("total_ms", result["timings"])
 
+    def test_exact_web_search_freezes_provider_and_database_results(self):
+        rows = [{"id": "blue-shirt", "text_score": .8,
+                 "mapped_attributes": [{"scope": "common", "group": "colors",
+                                        "value": "blue", "confidence": .9}]}]
+        with TemporaryDirectory() as directory, patch.dict("os.environ", {
+            "FASHION_CACHE_ENABLED": "1", "FASHION_VECTOR_SEARCH_MODE": "exact",
+            "FASHION_CACHE_PATH": str(Path(directory) / "retrieval.sqlite3"),
+        }):
+            first, first_session, _ = self.run_search(rows)
+            second, second_session, second_client = self.run_search([])
+        self.assertFalse(first["cache"]["hit"])
+        self.assertTrue(second["cache"]["hit"])
+        self.assertEqual(first["items"], second["items"])
+        self.assertEqual(first["extraction"], second["extraction"])
+        self.assertEqual(first_session.run.call_count, 3)
+        second_session.run.assert_not_called()
+        second_client.embeddings.create.assert_not_called()
+        self.assertEqual(first["reproducibility"]["vector_search_mode"], "exact")
+        self.assertEqual(len(first["params"]["query_embedding_sha256"]), 64)
+
     def test_invalid_requests_rejected_before_provider_calls(self):
         bad = [
             {"query": " "}, {"query": "x" * 2001}, {"query": 1},
@@ -251,7 +274,7 @@ class PreviewHTTPTests(unittest.TestCase):
                 self.assertEqual(response.status, 200)
                 self.assertTrue(response.read())
         with urlopen(self.base + "/") as response:
-            self.assertIn(b"/assets/app.js?v=20261006-shop", response.read())
+            self.assertIn(b"/assets/app.js?v=20261011-repro", response.read())
         with urlopen(self.base + "/api/config") as response:
             self.assertFalse(json.load(response)["ready"])
 

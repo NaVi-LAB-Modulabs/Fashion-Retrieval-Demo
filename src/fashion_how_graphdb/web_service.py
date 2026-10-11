@@ -20,6 +20,10 @@ from .neo4j_config import (
 )
 from .taxonomy import CATEGORY_NAMES
 from .llm import default_model
+from .reproducibility import (
+    cached, cache_enabled, dataset_revision, fingerprint, normalize_query,
+    resolve_model, vector_search_mode,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 IMAGE_DIR = ROOT / "sample_images"
@@ -67,7 +71,7 @@ def configuration(*, preview: bool = False) -> dict[str, Any]:
         "ready": configured and not preview,
         "preview": preview,
         "default_model": default_model(),
-        "models": list(dict.fromkeys([default_model(), "gpt-4.1-mini", "gpt-4.1"])),
+        "models": list(dict.fromkeys([default_model(), resolve_model("gpt-4.1-mini"), resolve_model("gpt-4.1")])),
         "image_count": len(image_index()),
         "type_count": len(catalog["item_types"]),
         "style_axis_count": len(catalog["style_axes"]),
@@ -120,7 +124,7 @@ def validate_request(payload: dict[str, Any]) -> dict[str, Any]:
     model = payload.get("model") or default_model()
     if not isinstance(model, str) or len(model) > 100 or not model.strip():
         raise ValueError("Choose a valid parser model.")
-    values = {"query": query.strip(), "limit": limit, "model": model.strip()}
+    values = {"query": normalize_query(query), "limit": limit, "model": resolve_model(model.strip())}
     for name in ("min_confidence", "min_score"):
         value = payload.get(name, 0.0)
         if value is not None and (
@@ -146,6 +150,28 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
     request = validate_request(payload)
     if not configuration()["ready"]:
         raise RuntimeError("Search is not configured. Set the OpenAI and Neo4j environment variables on the server.")
+    started = perf_counter()
+    signature = {
+        "request": request, "embedding_model": search.DEFAULT_EMBEDDING_MODEL,
+        "vector_index": hybrid_search.DESCRIPTION_VECTOR_INDEX,
+        "vector_search_mode": vector_search_mode(),
+        "database": {"uri": DEFAULT_NEO4J_URI, "database": DEFAULT_NEO4J_DATABASE,
+                     "user": DEFAULT_NEO4J_USER},
+        "provider": os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+    }
+    entry = cached("search", signature, lambda: _retrieve_uncached(request))
+    response = entry.value
+    original_timings = dict(response["timings"])
+    if entry.hit:
+        response["timings"] = {"parse_ms": 0, "graph_ms": 0, "rerank_ms": 0,
+                               "total_ms": round((perf_counter() - started) * 1000)}
+    response["cache"] = {"enabled": cache_enabled(), "hit": entry.hit,
+                         "key": entry.key, "created_at": entry.created_at,
+                         "original_timings": original_timings}
+    return response
+
+
+def _retrieve_uncached(request: dict[str, Any]) -> dict[str, Any]:
     started = perf_counter()
     with retrieval_stage("query parsing"):
         extraction = search.extract_search_filters(
@@ -181,9 +207,11 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
         "item_type_codes": query_params["item_type_codes"],
         "candidate_branch_limit": hybrid_search.CANDIDATE_BRANCH_SIZE,
         "vector_index": hybrid_search.DESCRIPTION_VECTOR_INDEX,
+        "vector_search_mode": vector_search_mode(),
         "filtered_ids": "<all hard-filtered IDs with matching embedding model; omitted>",
         "embedding_model": search.DEFAULT_EMBEDDING_MODEL,
         "query_embedding": f"<{len(embedding)} dimensions; omitted from response>",
+        "query_embedding_sha256": fingerprint(embedding),
         "min_confidence": request["min_confidence"],
         "min_score": request["min_score"],
         "weights": request["weights"],
@@ -209,6 +237,10 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
         "description_candidate_cypher": hybrid_search.description_candidate_cypher(),
         "candidate_count": len(raw_results), "result_count": len(results),
         "reranked": True, "embedding_model": search.DEFAULT_EMBEDDING_MODEL,
+        "reproducibility": {"dataset_revision": dataset_revision(),
+                            "parser_model": request["model"],
+                            "vector_search_mode": vector_search_mode(),
+                            "query_embedding_sha256": fingerprint(embedding)},
         "timings": {"parse_ms": round((parsed - started) * 1000),
                     "graph_ms": round((retrieved - parsed) * 1000),
                     "rerank_ms": round((finished - retrieved) * 1000),
