@@ -7,6 +7,13 @@ const componentScore = (item, name) => item.score_components?.includes(name) ? s
 const percentage = (value) => typeof value === "number" && Number.isFinite(value) ? Math.min(100, Math.max(0, value * 100)) : 0;
 const label = (value) => String(value || "").replaceAll("_", " ");
 const state = { config: null, preview: [], run: null, view: "grid", busy: false, lastAttemptFailed: false };
+state.comparisonMode = "reference";
+state.references = null;
+
+function visibleRun() {
+  if (state.run?.comparison && state.comparisonMode === "legacy") return {...state.run, ...state.run.comparison};
+  return state.run;
+}
 const weightControls = { text: "weight-text", graph: "weight-graph", style: "weight-style" };
 let defaultWeightPoints = { text: 55, graph: 35, style: 10 };
 
@@ -66,13 +73,14 @@ function handleImageErrors(container) {
 }
 
 function renderItems() {
-  const items = state.run ? state.run.items : state.preview;
+  const run = visibleRun();
+  const items = run ? run.items : state.preview;
   const ranked = Boolean(state.run);
   $("results-eyebrow").textContent = ranked ? "RANKED RESULTS" : "UNRANKED";
   $("results-title").firstChild.textContent = ranked ? "Search results" : "Catalog preview";
   $("result-count").textContent = items.length;
   $("results-caption").textContent = ranked
-    ? `${items.length} ranked ${items.length === 1 ? "match" : "matches"} from ${state.run.candidate_count} fetched candidates · “${state.run.query}”`
+    ? `${state.run.comparison ? `${state.comparisonMode === "legacy" ? "Legacy" : "Image reference"} · ` : ""}${items.length} ranked ${items.length === 1 ? "match" : "matches"} from ${state.run.candidate_count} fetched candidates · “${state.run.query}”`
     : "Preview images. Run a query to retrieve and rank matching items.";
   $("catalog-footnote").textContent = ranked
     ? "Select an item for matched attributes and score details. G = graph, T = semantic, S = style."
@@ -100,7 +108,7 @@ function renderItems() {
 
 function applyView() {
   $("results-grid").hidden = state.view !== "grid";
-  $("ranking-table").hidden = state.view !== "table" || !(state.run ? state.run.items.length : state.preview.length);
+  $("ranking-table").hidden = state.view !== "table" || !(visibleRun() ? visibleRun().items.length : state.preview.length);
   for (const mode of ["grid", "table"]) {
     $(`${mode}-view`).classList.toggle("active", mode === state.view);
     $(`${mode}-view`).setAttribute("aria-pressed", String(mode === state.view));
@@ -148,6 +156,7 @@ function highlightCypher(query) {
 function resetEvidence(running = false) {
   $("inspector-intro").hidden = false;
   $("search-insights").hidden = true;
+  $("reference-evidence").hidden = true;
   $("query-plan").hidden = false;
   $("query-state").textContent = running ? "Awaiting response" : "Not executed";
   $("cypher-code").textContent = running
@@ -168,7 +177,7 @@ function resetEvidence(running = false) {
 }
 
 function renderInsights() {
-  const run = state.run;
+  const run = visibleRun();
   if (!run) { resetEvidence(); return; }
   $("inspector-intro").hidden = true;
   $("search-insights").hidden = false;
@@ -186,6 +195,16 @@ function renderInsights() {
     <div class="insight-section"><h3 class="insight-label">Excluded attributes (${excluded.length})</h3>${excluded.length ? tags(excluded, true) : '<p class="muted">None extracted</p>'}</div>
     <div class="insight-section"><h3 class="insight-label">Semantic description</h3><p${extracted.description_query ? "" : ' class="muted"'}>${escapeHTML(extracted.description_query || "Not requested")}</p></div>
     <div class="insight-section"><h3 class="insight-label">Style targets (${axes.length})</h3>${axes.length ? axes.map((t) => axisMarkup(t)).join("") : '<p class="muted">Not requested</p>'}</div>`;
+  const calibration = state.run.extraction.style_calibration;
+  $("reference-evidence").hidden = !calibration;
+  if (calibration) {
+    $("reference-evidence").innerHTML = `<h3 class="insight-label">Reference calibration</h3>${calibration.assessments.length ? calibration.assessments.map((assessment) => {
+      const baseline = calibration.baseline_targets.find((target) => target.axis === assessment.axis);
+      const coverage = state.run.style_coverage?.find((entry) => entry.axis === assessment.axis);
+      return `<div class="reference-assessment"><button type="button" class="link-button" data-reference-axis="${escapeHTML(assessment.axis)}">${escapeHTML(label(assessment.axis))}</button><p>Legacy ${score(baseline?.target)} → Reference ${score(assessment.target)}</p><p class="muted">Confidence ${score(assessment.confidence)} · ${assessment.active ? "Accepted target" : "Omitted target"}</p>${coverage ? `<p class="${coverage.available_candidates ? "muted" : "weight-invalid"}">Stored axis values: ${coverage.available_candidates}/${coverage.total_candidates} candidates${coverage.available_candidates ? "" : ". Style scoring unavailable."}</p>` : ""}<p>${escapeHTML(assessment.evidence)}</p>${assessment.ambiguity_reason ? `<p>${escapeHTML(assessment.ambiguity_reason)}</p>` : ""}<small>${assessment.supporting_reference_ids.map(escapeHTML).join(", ")}</small></div>`;
+    }).join("") : '<p class="muted">No requested style axes.</p>'}`;
+  }
+  $("comparison-switch").hidden = !state.run.comparison;
   $("cypher-code").innerHTML = highlightCypher(searchCypher(run));
   $("cypher-code").parentElement.classList.remove("empty-code");
   $("query-state").textContent = state.lastAttemptFailed ? "Previous run · candidate query" : "Candidate query";
@@ -193,7 +212,7 @@ function renderInsights() {
   $("parameter-list").innerHTML = `<dl>${Object.entries(run.params).map(([key, value]) => `<div class="parameter-row"><dt>$${escapeHTML(key)}</dt><dd>${escapeHTML(JSON.stringify(value))}</dd></div>`).join("")}</dl>`;
   $("extraction-code").textContent = JSON.stringify(extracted, null, 2);
   const settings = run.settings;
-  $("run-summary").textContent = `Parser: ${settings.model} · Results: ${settings.limit} · Min. score: ${settings.min_score ?? "off"} · Min. attribute match: ${settings.min_confidence ?? "off"} · Weights: ${effectiveWeightLabel(settings.weights || {text: .55, graph: .35, style: .10})}. ${run.reranked ? "Weighted reranking applied." : "Graph ranking only."}`;
+  $("run-summary").textContent = `Style: ${run.mode || settings.style_mode || "legacy"} · Parser: ${settings.model} · Results: ${settings.limit} · Min. score: ${settings.min_score ?? "off"} · Min. attribute match: ${settings.min_confidence ?? "off"} · Weights: ${effectiveWeightLabel(settings.weights || {text: .55, graph: .35, style: .10})}. ${run.reranked ? "Weighted reranking applied." : "Graph ranking only."}`;
   $("run-state").textContent = state.lastAttemptFailed ? "Previous run" : run.cache?.hit ? "Cached result" : "Completed";
   $("parse-time").textContent = `${run.timings.parse_ms} ms`;
   $("graph-time").textContent = `${run.timings.graph_ms} ms`;
@@ -208,7 +227,7 @@ function attributeList(attributes) {
 }
 
 function openItem(index) {
-  const item = (state.run ? state.run.items : state.preview)[index];
+  const item = (visibleRun() ? visibleRun().items : state.preview)[index];
   if (!item || state.busy) return;
   const ranked = Boolean(state.run);
   const components = item.score_components || [];
@@ -231,6 +250,7 @@ function setBusy(busy) {
   $("search-button-text").textContent = busy ? "Searching..." : "Search";
   $("results-section").setAttribute("aria-busy", String(busy));
   document.querySelectorAll("#search-form input, #search-form select, #reset-weights, [data-query], .view-switch button").forEach((el) => { el.disabled = busy; });
+  if (!busy) $("compare-styles").disabled = $("style-mode").value !== "reference";
   if (busy) {
     resetEvidence(true);
     $("results-grid").hidden = false;
@@ -267,6 +287,8 @@ $("search-form").addEventListener("submit", async (event) => {
     return;
   }
   const payload = {query, model: $("model").value.trim(), limit: Number($("limit").value), min_score: Number($("min-score").value), min_confidence: Number($("min-confidence").value), weights};
+  payload.style_mode = $("style-mode").value;
+  payload.compare_styles = payload.style_mode === "reference" && $("compare-styles").checked;
   state.lastAttemptFailed = false;
   const started = Date.now();
   setBusy(true);
@@ -274,6 +296,7 @@ $("search-form").addEventListener("submit", async (event) => {
   const timer = setInterval(() => notice(`Search in progress · ${Math.round((Date.now() - started) / 1000)}s elapsed. Waiting for the retrieval response.`, "loading"), 1000);
   try {
     state.run = await api("/api/search", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload), signal: AbortSignal.timeout(240000)});
+    selectComparison("reference");
     notice(`Found ${state.run.result_count} ranked ${state.run.result_count === 1 ? "match" : "matches"} in ${(state.run.timings.total_ms / 1000).toFixed(1)}s.${state.run.cache?.hit ? " Reused the saved result for these search settings." : ""} Constraints, Cypher and ranking evidence are available below.`);
   } catch (error) {
     state.lastAttemptFailed = true;
@@ -285,6 +308,47 @@ $("search-form").addEventListener("submit", async (event) => {
     renderItems();
     renderInsights();
   }
+});
+
+function selectComparison(mode) {
+  state.comparisonMode = mode;
+  for (const name of ["reference", "legacy"]) {
+    $(`${name}-results`).classList.toggle("active", mode === name);
+    $(`${name}-results`).setAttribute("aria-pressed", String(mode === name));
+  }
+}
+
+for (const mode of ["reference", "legacy"]) $(`${mode}-results`).addEventListener("click", () => {
+  selectComparison(mode);
+  renderItems();
+  renderInsights();
+});
+$("style-mode").addEventListener("change", () => {
+  $("compare-styles").disabled = $("style-mode").value !== "reference";
+});
+
+function showReferenceImage() {
+  const axis = state.references?.axes.find((entry) => entry.id === $("reference-axis").value);
+  if (!axis) return;
+  $("reference-image").src = axis.image_url;
+  $("reference-image").alt = `${axis.label}: reference examples at labeled score levels`;
+  $("reference-scale").textContent = `${axis.question} Levels: ${axis.levels.map((value) => value.toFixed(2)).join(" / ")}`;
+}
+
+async function openReferences(axisId) {
+  try {
+    state.references ||= await api("/api/style-references");
+    $("reference-axis").innerHTML = state.references.axes.map((axis) => `<option value="${escapeHTML(axis.id)}">${escapeHTML(axis.label)}</option>`).join("");
+    if (axisId) $("reference-axis").value = axisId;
+    showReferenceImage();
+    $("reference-dialog").showModal();
+  } catch (error) { notice(error.message, "error"); }
+}
+$("browse-references").addEventListener("click", () => openReferences());
+$("reference-axis").addEventListener("change", showReferenceImage);
+$("reference-evidence").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-reference-axis]");
+  if (button) openReferences(button.dataset.referenceAxis);
 });
 
 document.querySelectorAll("[data-query]").forEach((button) => button.addEventListener("click", () => {

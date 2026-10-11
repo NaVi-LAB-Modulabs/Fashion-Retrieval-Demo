@@ -242,6 +242,17 @@ python scripts\render_search_flow.py
 
 ## Neo4j Item Properties
 
+### Experimental image-reference style targets
+
+The web UI now offers **Image references** and **Legacy** target modes. Image
+references sends the existing labeled calibration garments to the model at
+query time. Compare legacy reranks the identical candidate pool with both
+target sets, with reference images, confidence and target changes in the
+inspector. Stored item axes and retrieval weights remain unchanged. The API
+defaults to legacy for compatibility. See
+[the experiment notes](docs/reference-style-experiment.md) for provenance,
+limits, request fields and evaluation guidance.
+
 For Fashion200K images, each `Item` should preserve the Hugging Face `item_ID`
 as `id` (or supply a separate `item_ID` property). Only IDs in `sample_ids.json`
 with saved image files receive an image URL.

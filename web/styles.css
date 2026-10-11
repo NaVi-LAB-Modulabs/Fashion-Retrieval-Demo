@@ -50,6 +50,18 @@
 }
 
 * { box-sizing: border-box; }
+.style-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 24px; margin-top: 16px; font-size: 13px; }
+.style-controls label { display: flex; align-items: center; gap: 8px; }
+.style-controls select, .reference-select select { background: var(--surface); border: 1px solid var(--line-strong); border-radius: 6px; padding: 7px 10px; max-width: 100%; }
+.comparison-check input { accent-color: var(--ink); }
+#reference-evidence { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 16px; overflow-wrap: anywhere; }
+.reference-assessment { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.reference-assessment p { font-size: 12px; margin: 6px 0; }
+.reference-assessment small { color: var(--muted); font-family: var(--mono); font-size: 10px; }
+#reference-dialog { width: min(950px, 94vw); }
+.reference-select { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 18px 0; }
+#reference-image { display: block; width: 100%; height: auto; background: white; }
+#reference-scale { margin-top: 14px; }
 html { scroll-behavior: smooth; scroll-padding-top: 88px; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
 h1, h2, h3, p, dl, dd { margin: 0; }
@@ -160,7 +172,7 @@ code { font-family: inherit; }
 .results-eyebrow { font: 500 11px var(--mono); color: var(--muted); letter-spacing: .08em; margin-bottom: 6px; }
 #results-title { display: flex; gap: 10px; align-items: baseline; font-size: 28px; font-weight: 600; letter-spacing: -.035em; line-height: 1.1; }
 .count-badge { font: 500 14px var(--mono); color: var(--muted); letter-spacing: 0; }
-.results-actions { display: flex; align-items: center; gap: 10px; }
+.results-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .view-switch { display: inline-flex; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); }
 .view-switch button { background: transparent; border: 0; border-radius: 999px; padding: 7px 16px; color: var(--muted); font-size: 13px; font-weight: 500; transition: background .2s, color .2s; }
 .view-switch button.active { background: var(--ink); color: var(--bg); }

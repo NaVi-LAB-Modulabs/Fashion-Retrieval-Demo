@@ -12,7 +12,7 @@ from time import perf_counter
 from typing import Any
 from urllib.parse import quote
 
-from . import hybrid_search, search
+from . import hybrid_search, search, style_references
 from .diagnostics import retrieval_stage
 from .neo4j_config import (
     DEFAULT_NEO4J_DATABASE, DEFAULT_NEO4J_PASSWORD,
@@ -78,6 +78,7 @@ def configuration(*, preview: bool = False) -> dict[str, Any]:
         "type_names": CATEGORY_NAMES,
         "style_axes": search.STYLE_AXES,
         "default_weights": hybrid_search.DEFAULT_WEIGHTS,
+        "style_modes": ["legacy", "reference"],
     }
 
 
@@ -125,6 +126,14 @@ def validate_request(payload: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(model, str) or len(model) > 100 or not model.strip():
         raise ValueError("Choose a valid parser model.")
     values = {"query": normalize_query(query), "limit": limit, "model": resolve_model(model.strip())}
+    style_mode = payload.get("style_mode", "legacy")
+    if style_mode not in ("legacy", "reference"):
+        raise ValueError("Choose legacy or reference style calibration.")
+    values["style_mode"] = style_mode
+    compare = payload.get("compare_styles", False)
+    if type(compare) is not bool or (compare and style_mode != "reference"):
+        raise ValueError("Style comparison requires reference mode and a boolean compare_styles.")
+    values["compare_styles"] = compare
     for name in ("min_confidence", "min_score"):
         value = payload.get(name, 0.0)
         if value is not None and (
@@ -158,6 +167,7 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
         "database": {"uri": DEFAULT_NEO4J_URI, "database": DEFAULT_NEO4J_DATABASE,
                      "user": DEFAULT_NEO4J_USER},
         "provider": os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+        "style_reference_revision": style_references.reference_revision() if request["style_mode"] == "reference" else None,
     }
     entry = cached("search", signature, lambda: _retrieve_uncached(request))
     response = entry.value
@@ -177,6 +187,12 @@ def _retrieve_uncached(request: dict[str, Any]) -> dict[str, Any]:
         extraction = search.extract_search_filters(
             request["query"], client=openai_client(), model=request["model"],
         )
+    baseline_extraction = extraction
+    if request["style_mode"] == "reference":
+        with retrieval_stage("reference style calibration"):
+            extraction = style_references.calibrate_query(
+                request["query"], extraction, client=openai_client(), model=request["model"],
+            )
     parsed = perf_counter()
     driver = neo4j_driver()
     with driver.session(**({"database": DEFAULT_NEO4J_DATABASE} if DEFAULT_NEO4J_DATABASE else {})) as session:
@@ -201,6 +217,11 @@ def _retrieve_uncached(request: dict[str, Any]) -> dict[str, Any]:
             min_confidence=request["min_confidence"], min_score=request["min_score"],
             weights=request["weights"],
         )
+        baseline_items = hybrid_search.rerank(
+            raw_results, baseline_extraction, limit=request["limit"],
+            min_confidence=request["min_confidence"], min_score=request["min_score"],
+            weights=request["weights"],
+        ) if request["compare_styles"] else None
     params = {
         **hybrid_search.candidate_cypher(extraction)[1],
         "candidate_ids": candidate_ids,
@@ -215,7 +236,41 @@ def _retrieve_uncached(request: dict[str, Any]) -> dict[str, Any]:
         "min_confidence": request["min_confidence"],
         "min_score": request["min_score"],
         "weights": request["weights"],
+        "style_mode": request["style_mode"],
     }
+    results = public_items(items)
+    baseline_results = public_items(baseline_items) if baseline_items is not None else None
+    finished = perf_counter()
+    response = {
+        "query": request["query"], "settings": request, "items": results,
+        "extraction": extraction, "cypher": cypher, "params": params,
+        "candidate_cypher": hybrid_search.candidate_cypher(extraction)[0],
+        "description_candidate_cypher": hybrid_search.description_candidate_cypher(),
+        "candidate_count": len(raw_results), "result_count": len(results),
+        "style_coverage": [{"axis": target["axis"], "total_candidates": len(raw_results),
+                            "available_candidates": sum(search._to_float(item.get(target["axis"])) is not None
+                                                        for item in raw_results)}
+                           for target in baseline_extraction.get("style_axis_targets", [])],
+        "reranked": True, "embedding_model": search.DEFAULT_EMBEDDING_MODEL,
+        "reproducibility": {"dataset_revision": dataset_revision(),
+                            "parser_model": request["model"],
+                            "vector_search_mode": vector_search_mode(),
+                            "style_reference_revision": extraction.get("style_calibration", {}).get("revision"),
+                            "query_embedding_sha256": fingerprint(embedding)},
+        "timings": {"parse_ms": round((parsed - started) * 1000),
+                    "graph_ms": round((retrieved - parsed) * 1000),
+                    "rerank_ms": round((finished - retrieved) * 1000),
+                    "total_ms": round((finished - started) * 1000)},
+    }
+    if baseline_results is not None:
+        response["comparison"] = {"mode": "legacy", "items": baseline_results,
+                                  "result_count": len(baseline_results), "extraction": baseline_extraction,
+                                  "same_candidate_pool": True,
+                                  "candidate_ids": candidate_ids}
+    return response
+
+
+def public_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     # Only expose fields needed to explain retrieval; never serialize arbitrary DB properties.
     fields = ("id", "category", "category_name", "type_code", "type_name", "score", "graph_score", "text_score",
               "style_score", "score_components", "matched_filters", "mapped_attributes", "style_axis_matches")
@@ -229,20 +284,4 @@ def _retrieve_uncached(request: dict[str, Any]) -> dict[str, Any]:
         public["type_code"] = item.get("category") or item.get("type_code")
         public["type_name"] = item.get("category_name") or item.get("type_name") or CATEGORY_NAMES.get(public["type_code"], "Garment")
         results.append(public)
-    finished = perf_counter()
-    return {
-        "query": request["query"], "settings": request, "items": results,
-        "extraction": extraction, "cypher": cypher, "params": params,
-        "candidate_cypher": hybrid_search.candidate_cypher(extraction)[0],
-        "description_candidate_cypher": hybrid_search.description_candidate_cypher(),
-        "candidate_count": len(raw_results), "result_count": len(results),
-        "reranked": True, "embedding_model": search.DEFAULT_EMBEDDING_MODEL,
-        "reproducibility": {"dataset_revision": dataset_revision(),
-                            "parser_model": request["model"],
-                            "vector_search_mode": vector_search_mode(),
-                            "query_embedding_sha256": fingerprint(embedding)},
-        "timings": {"parse_ms": round((parsed - started) * 1000),
-                    "graph_ms": round((retrieved - parsed) * 1000),
-                    "rerank_ms": round((finished - retrieved) * 1000),
-                    "total_ms": round((finished - started) * 1000)},
-    }
+    return results

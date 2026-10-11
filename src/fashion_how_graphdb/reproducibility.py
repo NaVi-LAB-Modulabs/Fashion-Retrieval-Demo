@@ -42,7 +42,7 @@ def fingerprint(value: Any) -> str:
 def pipeline_revision() -> str:
     digest = hashlib.sha256()
     for name in ("reproducibility.py", "llm.py", "search.py", "hybrid_search.py",
-                 "web_service.py", "taxonomy.py", "category_taxonomy.py"):
+                 "web_service.py", "style_references.py", "taxonomy.py", "category_taxonomy.py"):
         digest.update(Path(__file__).with_name(name).read_bytes())
     digest.update((ROOT / "sample_ids.json").read_bytes())
     return digest.hexdigest()

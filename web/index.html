@@ -11,8 +11,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
-  <link rel="stylesheet" href="/assets/styles.css?v=20261006-shop">
-  <script src="/assets/app.js?v=20261011-repro" defer></script>
+  <link rel="stylesheet" href="/assets/styles.css?v=20261011-references">
+  <script src="/assets/app.js?v=20261011-references" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#query">Skip to search</a>
@@ -38,6 +38,11 @@
             <button class="search-button" id="search-button" type="submit"><span id="search-button-text">Search</span><span class="search-arrow" aria-hidden="true">↵</span></button>
           </div>
           <div class="suggestions"><span>Try</span><button type="button" data-query="A casual blue shirt, not white, for daily wear">Blue shirt, exclude white</button><button type="button" data-query="A romantic floral blouse for a spring date">Floral blouse for spring</button><button type="button" data-query="Minimal black outerwear that feels formal">Minimal, formal outerwear</button></div>
+          <div class="style-controls">
+            <label for="style-mode">Style targets <select id="style-mode"><option value="reference" selected>Image references</option><option value="legacy">Legacy</option></select></label>
+            <label class="comparison-check"><input type="checkbox" id="compare-styles" checked> Compare legacy</label>
+            <button type="button" class="link-button" id="browse-references">Reference images</button>
+          </div>
           <div class="settings" id="settings" hidden>
             <div class="settings-grid">
               <label>Parser model<input id="model" list="model-options" maxlength="100" placeholder="Loading default..."><datalist id="model-options"></datalist></label>
@@ -71,6 +76,7 @@
           <p>Run a query to inspect the parser output. No constraints have been inferred from the preview images.</p>
         </div>
         <div id="search-insights" hidden></div>
+        <div id="reference-evidence" hidden></div>
         <details class="raw-extraction" id="raw-extraction"><summary>Parser output <span>JSON</span></summary><pre><code id="extraction-code">No parser output yet.</code></pre></details>
       </aside>
 
@@ -81,6 +87,7 @@
             <h2 id="results-title">Catalog preview<span class="count-badge" id="result-count">-</span></h2>
           </div>
           <div class="results-actions">
+            <div class="view-switch" id="comparison-switch" role="group" aria-label="Style comparison" hidden><button type="button" id="reference-results" class="active" aria-pressed="true">Reference</button><button type="button" id="legacy-results" aria-pressed="false">Legacy</button></div>
             <div class="view-switch" role="group" aria-label="Results view"><button type="button" id="grid-view" class="active" aria-pressed="true">Images</button><button type="button" id="table-view" aria-pressed="false">Scores</button></div>
             <button type="button" id="export-run" class="export-button" disabled>Export run <span>.json</span></button>
           </div>
@@ -124,6 +131,7 @@ Run retrieval to inspect the final candidate query here.</code></pre>
   <footer class="site-footer"><p>Scoring: weighted mean of available semantic, graph and requested style components. <span>N/A = unavailable or inactive.</span></p><button type="button" class="link-button" data-open-method>Read the scoring method</button></footer>
 
   <dialog id="item-dialog" aria-labelledby="item-dialog-title"><button type="button" class="dialog-close" aria-label="Close item details" data-close-dialog>×</button><div id="item-dialog-content"></div></dialog>
+  <dialog id="reference-dialog" aria-labelledby="reference-dialog-title"><button type="button" class="dialog-close" aria-label="Close reference images" data-close-dialog>×</button><h2 id="reference-dialog-title">Style references</h2><label class="reference-select" for="reference-axis">Axis <select id="reference-axis"></select></label><img id="reference-image" alt="Labeled style reference images"><p id="reference-scale" class="muted"></p></dialog>
   <dialog id="cypher-dialog" aria-labelledby="expanded-query-title"><button type="button" class="dialog-close" aria-label="Close expanded query" data-close-dialog>×</button><h2 id="expanded-query-title">Search Cypher</h2><p class="panel-description">Candidate selection and evidence queries from the selected run.</p><pre tabindex="0" aria-label="Search Cypher"><code id="expanded-cypher-code"></code></pre></dialog>
   <dialog id="method-dialog" aria-labelledby="method-title">
     <button type="button" class="dialog-close" aria-label="Close methodology" data-close-dialog>×</button>

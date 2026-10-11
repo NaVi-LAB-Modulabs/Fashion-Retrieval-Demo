@@ -1,4 +1,4 @@
-"""Text-only OpenAI calls for search query parsing."""
+"""Structured OpenAI calls for query parsing and visual calibration."""
 
 from __future__ import annotations
 
@@ -66,6 +66,8 @@ def call_text_json_with_error(
     retry_prompt_text: str | None = None,
     json_schema: dict[str, Any] | None = None,
     json_schema_name: str = "text_json",
+    user_content: list[dict[str, Any]] | None = None,
+    max_output_tokens: int | None = None,
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     retry_text = retry_prompt_text or INVALID_JSON_RETRY_PROMPT
     text_format = _text_format(json_schema, json_schema_name)
@@ -76,11 +78,13 @@ def call_text_json_with_error(
         },
         {
             "role": "user",
-            "content": [{"type": "input_text", "text": user_prompt}],
+            "content": [{"type": "input_text", "text": user_prompt}, *(user_content or [])],
         },
     ]
 
     create_kwargs = _create_kwargs(model)
+    if max_output_tokens is not None:
+        create_kwargs["max_output_tokens"] = max_output_tokens
     if text_format is not None:
         create_kwargs["text"] = text_format
 

@@ -19,6 +19,7 @@ from fashion_how_graphdb.web_service import (
     catalog_preview, configuration, image_index, retrieve, validate_request,
 )
 from fashion_how_graphdb.diagnostics import failure_details
+from fashion_how_graphdb.style_references import reference_catalog
 
 app = FastAPI(title="Fashion Search API", version="1.0.0")
 
@@ -46,6 +47,11 @@ def config() -> dict[str, Any]:
 @app.get("/api/preview")
 def preview() -> dict[str, Any]:
     return catalog_preview()
+
+
+@app.get("/api/style-references")
+def style_reference_catalog() -> dict[str, Any]:
+    return reference_catalog()
 
 
 @app.get("/images/{filename}", include_in_schema=False)
