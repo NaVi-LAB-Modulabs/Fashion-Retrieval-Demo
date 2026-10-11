@@ -11,8 +11,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
-  <link rel="stylesheet" href="/assets/styles.css?v=20261011-references">
-  <script src="/assets/app.js?v=20261011-references" defer></script>
+  <link rel="stylesheet" href="/assets/styles.css?v=20261011-clip">
+  <script src="/assets/app.js?v=20261011-clip" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#query">Skip to search</a>
@@ -39,8 +39,10 @@
           </div>
           <div class="suggestions"><span>Try</span><button type="button" data-query="A casual blue shirt, not white, for daily wear">Blue shirt, exclude white</button><button type="button" data-query="A romantic floral blouse for a spring date">Floral blouse for spring</button><button type="button" data-query="Minimal black outerwear that feels formal">Minimal, formal outerwear</button></div>
           <div class="style-controls">
+            <label for="retrieval-mode">Retrieval <select id="retrieval-mode"><option value="hybrid">Hybrid</option><option value="clip">CLIP ONNX</option></select></label>
             <label for="style-mode">Style targets <select id="style-mode"><option value="reference" selected>Image references</option><option value="legacy">Legacy</option></select></label>
             <label class="comparison-check"><input type="checkbox" id="compare-styles" checked> Compare legacy</label>
+            <label class="comparison-check"><input type="checkbox" id="compare-clip"> Compare CLIP</label>
             <button type="button" class="link-button" id="browse-references">Reference images</button>
           </div>
           <div class="settings" id="settings" hidden>
@@ -87,6 +89,7 @@
             <h2 id="results-title">Catalog preview<span class="count-badge" id="result-count">-</span></h2>
           </div>
           <div class="results-actions">
+            <label id="ranking-method-label" hidden>Ranking <select id="ranking-method"><option value="hybrid">Hybrid</option><option value="same_candidates">CLIP · same candidates</option><option value="catalog">CLIP · full catalog</option></select></label>
             <div class="view-switch" id="comparison-switch" role="group" aria-label="Style comparison" hidden><button type="button" id="reference-results" class="active" aria-pressed="true">Reference</button><button type="button" id="legacy-results" aria-pressed="false">Legacy</button></div>
             <div class="view-switch" role="group" aria-label="Results view"><button type="button" id="grid-view" class="active" aria-pressed="true">Images</button><button type="button" id="table-view" aria-pressed="false">Scores</button></div>
             <button type="button" id="export-run" class="export-button" disabled>Export run <span>.json</span></button>

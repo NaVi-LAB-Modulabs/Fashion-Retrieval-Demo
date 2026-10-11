@@ -53,6 +53,9 @@
 .style-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 24px; margin-top: 16px; font-size: 13px; }
 .style-controls label { display: flex; align-items: center; gap: 8px; }
 .style-controls select, .reference-select select { background: var(--surface); border: 1px solid var(--line-strong); border-radius: 6px; padding: 7px 10px; max-width: 100%; }
+#ranking-method-label { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 13px; max-width: 100%; }
+#ranking-method { background: var(--surface); border: 1px solid var(--line-strong); border-radius: 6px; padding: 7px 10px; max-width: 100%; }
+.insight-section dd { margin: 4px 0 0; font-size: 13px; overflow-wrap: anywhere; }
 .comparison-check input { accent-color: var(--ink); }
 #reference-evidence { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 16px; overflow-wrap: anywhere; }
 .reference-assessment { padding: 12px 0; border-bottom: 1px solid var(--line); }

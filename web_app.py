@@ -20,6 +20,8 @@ from fashion_how_graphdb.web_service import (
 )
 from fashion_how_graphdb.diagnostics import failure_details
 from fashion_how_graphdb.style_references import reference_catalog
+from fashion_how_graphdb import clip_onnx
+from fashion_how_graphdb.diagnostics import retrieval_stage
 
 app = FastAPI(title="Fashion Search API", version="1.0.0")
 
@@ -81,6 +83,27 @@ def search(payload: dict[str, Any]) -> Any:
             "detail": f"Search failed during {details['stage']}. Reference: {error_id}. Check the server logs for this reference.",
             "error_id": error_id,
             "stage": details["stage"],
+        })
+
+
+@app.post("/api/clip/search")
+def clip_search(payload: dict[str, Any]) -> Any:
+    try:
+        clip_onnx.validate_request(payload)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    if not clip_onnx.configuration()["available"]:
+        raise HTTPException(503, "Build the CLIP catalog index before searching.")
+    try:
+        with retrieval_stage("CLIP ONNX retrieval"):
+            return clip_onnx.retrieve(payload)
+    except Exception as exc:
+        details = failure_details(exc)
+        error_id = uuid4().hex[:12]
+        logging.getLogger(__name__).error("CLIP failed error_id=%s diagnostics=%s", error_id, json.dumps(details))
+        return JSONResponse(status_code=502, content={
+            "detail": f"CLIP search failed. Reference: {error_id}. Check the server logs for this reference.",
+            "error_id": error_id, "stage": details["stage"],
         })
 
 

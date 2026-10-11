@@ -12,7 +12,7 @@ from time import perf_counter
 from typing import Any
 from urllib.parse import quote
 
-from . import hybrid_search, search, style_references
+from . import clip_onnx, hybrid_search, search, style_references
 from .diagnostics import retrieval_stage
 from .neo4j_config import (
     DEFAULT_NEO4J_DATABASE, DEFAULT_NEO4J_PASSWORD,
@@ -67,6 +67,7 @@ def image_url(item_id: Any) -> str | None:
 def configuration(*, preview: bool = False) -> dict[str, Any]:
     configured = bool(os.getenv("OPENAI_API_KEY") and DEFAULT_NEO4J_URI and DEFAULT_NEO4J_PASSWORD)
     catalog = search.search_catalog()
+    clip_config = clip_onnx.configuration()
     return {
         "ready": configured and not preview,
         "preview": preview,
@@ -79,6 +80,7 @@ def configuration(*, preview: bool = False) -> dict[str, Any]:
         "style_axes": search.STYLE_AXES,
         "default_weights": hybrid_search.DEFAULT_WEIGHTS,
         "style_modes": ["legacy", "reference"],
+        "clip": {**clip_config, "available": clip_config["available"] and not preview},
     }
 
 
@@ -134,6 +136,10 @@ def validate_request(payload: dict[str, Any]) -> dict[str, Any]:
     if type(compare) is not bool or (compare and style_mode != "reference"):
         raise ValueError("Style comparison requires reference mode and a boolean compare_styles.")
     values["compare_styles"] = compare
+    compare_clip = payload.get("compare_clip", False)
+    if type(compare_clip) is not bool:
+        raise ValueError("compare_clip must be a boolean.")
+    values["compare_clip"] = compare_clip
     for name in ("min_confidence", "min_score"):
         value = payload.get(name, 0.0)
         if value is not None and (
@@ -168,6 +174,7 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
                      "user": DEFAULT_NEO4J_USER},
         "provider": os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
         "style_reference_revision": style_references.reference_revision() if request["style_mode"] == "reference" else None,
+        "clip_index_revision": clip_onnx.index_revision() if request["compare_clip"] else None,
     }
     entry = cached("search", signature, lambda: _retrieve_uncached(request))
     response = entry.value
@@ -240,6 +247,17 @@ def _retrieve_uncached(request: dict[str, Any]) -> dict[str, Any]:
     }
     results = public_items(items)
     baseline_results = public_items(baseline_items) if baseline_items is not None else None
+    clip_comparisons = None
+    if request["compare_clip"]:
+        with retrieval_stage("CLIP comparison"):
+            vector, count, truncated = clip_onnx.encode_text(request["query"])
+            # Compare the entire fetched pool, not the final hybrid top-k.
+            image_ids = [str(item.get("item_ID") or item["id"]) for item in raw_results]
+            clip_comparisons = {
+                scope: {**clip_onnx.rank_vector(vector, limit=request["limit"], **options),
+                        "query": request["query"], "token_count": count, "truncated": truncated}
+                for scope, options in [("same_candidates", {"candidate_ids": image_ids}), ("catalog", {})]
+            }
     finished = perf_counter()
     response = {
         "query": request["query"], "settings": request, "items": results,
@@ -267,6 +285,8 @@ def _retrieve_uncached(request: dict[str, Any]) -> dict[str, Any]:
                                   "result_count": len(baseline_results), "extraction": baseline_extraction,
                                   "same_candidate_pool": True,
                                   "candidate_ids": candidate_ids}
+    if clip_comparisons is not None:
+        response["clip_comparisons"] = clip_comparisons
     return response
 
 

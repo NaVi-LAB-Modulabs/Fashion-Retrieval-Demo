@@ -44,6 +44,16 @@ or the server environment to enable live search. Credentials stay on the server.
 The status indicator reports configuration presence, not verified connectivity.
 No local GPU is required by the web retrieval path.
 
+### CLIP ONNX comparison
+
+Choose **Retrieval: CLIP ONNX** to search the packaged 5,000-image catalog using
+OpenAI CLIP ViT-B/32 on CPU, without OpenAI/Neo4j credentials or PyTorch. In
+Hybrid mode, **Compare CLIP** adds both same-candidate reranking and full-catalog
+CLIP results. The **Ranking** selector switches methods; scores are raw CLIP
+cosines, not hybrid weighted scores. First use downloads a pinned text ONNX
+model and tokenizer to temporary storage. See [model provenance, algorithms,
+API requests and Recall@K evaluation](docs/clip-onnx-comparison.md).
+
 To view the design without installing packages or calling external services:
 
 ```cmd

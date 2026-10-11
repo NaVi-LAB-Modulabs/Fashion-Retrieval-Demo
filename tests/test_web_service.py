@@ -190,6 +190,19 @@ class RetrievalTests(unittest.TestCase):
         self.assertTrue(result["cypher"])
         self.assertIn("total_ms", result["timings"])
 
+    def test_clip_comparison_uses_full_fetched_pool_and_encodes_query_once(self):
+        rows = [{"id": f"{index}_0", "text_score": .8,
+                 "mapped_attributes": [{"scope": "common", "group": "colors", "value": "blue", "confidence": .9}]}
+                for index in range(5)]
+        with patch.object(service.clip_onnx, "encode_text", return_value=([1], 7, False)) as encode, \
+             patch.object(service.clip_onnx, "rank_vector", return_value={"items": [], "candidate_count": 5}) as rank:
+            result, _, _ = self.run_search(rows, compare_clip=True, limit=1)
+        self.assertEqual(len(result["items"]), 1)
+        self.assertEqual(len(rank.call_args_list[0].kwargs["candidate_ids"]), 5)
+        self.assertNotIn("candidate_ids", rank.call_args_list[1].kwargs)
+        self.assertEqual(set(result["clip_comparisons"]), {"same_candidates", "catalog"})
+        encode.assert_called_once_with("a blue blouse")
+
     def test_exact_web_search_freezes_provider_and_database_results(self):
         rows = [{"id": "blue-shirt", "text_score": .8,
                  "mapped_attributes": [{"scope": "common", "group": "colors",
@@ -223,6 +236,7 @@ class RetrievalTests(unittest.TestCase):
             {"query": "blue", "weights": {"text": 1, "graph": 0, "style": float("nan")}},
             {"query": "blue", "weights": {"text": True, "graph": 0, "style": 0}},
             {"query": "blue", "weights": {"text": 1, "graph": 0, "style": 0, "other": 0}},
+            {"query": "blue", "compare_clip": "true"},
         ]
         with patch.object(service, "openai_client") as client:
             for payload in bad:
@@ -274,7 +288,7 @@ class PreviewHTTPTests(unittest.TestCase):
                 self.assertEqual(response.status, 200)
                 self.assertTrue(response.read())
         with urlopen(self.base + "/") as response:
-            self.assertIn(b"/assets/app.js?v=20261011-references", response.read())
+            self.assertIn(b"/assets/app.js?v=20261011-clip", response.read())
         with urlopen(self.base + "/api/config") as response:
             self.assertFalse(json.load(response)["ready"])
 
