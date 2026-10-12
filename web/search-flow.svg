@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1500" viewBox="0 0 12 15" role="img" aria-labelledby="title desc">
 <title id="title">Fashion retrieval flow</title>
-<desc id="desc">Hard filters run before attribute top 10 and filtered HNSW top 10. Their union is ranked by exact description similarity, required attributes and requested style axes.</desc>
+<desc id="desc">Hard filters run before attribute top 10 and description top 10 (exact cosine by default). Their union is ranked by exact description similarity, required attributes and requested style axes.</desc>
 <rect width="12" height="15" fill="#f8f9f5"/>
 <text x="6" y="0.4499999999999993" text-anchor="middle" dominant-baseline="central" font-family="Segoe UI, DejaVu Sans, sans-serif" font-size="0.3472222222222222" font-weight="700" fill="#203e32">Fashion retrieval flow</text>
 <text x="6" y="0.8699999999999992" text-anchor="middle" dominant-baseline="central" font-family="Segoe UI, DejaVu Sans, sans-serif" font-size="0.16666666666666666" font-weight="400" fill="#63756b">Hard filters → two candidate lists → weighted ranking</text>
@@ -35,7 +35,7 @@
 <rect x="6.15" y="6.95" width="4.8" height="1.8" rx="0.16" fill="#edf2fa" stroke="#ccd7cd" stroke-width="0.017"/>
 <text x="8.55" y="7.239999999999999" text-anchor="middle" dominant-baseline="central" font-family="Segoe UI, DejaVu Sans, sans-serif" font-size="0.20833333333333334" font-weight="700" fill="#2e4e75">2b  Description top 10</text>
 <text x="8.55" y="7.831666666666667" text-anchor="middle" dominant-baseline="central" font-family="Segoe UI, DejaVu Sans, sans-serif" font-size="0.16666666666666666" font-weight="400" fill="#4c5d56">Query embedding + stored descriptions</text>
-<text x="8.55" y="8.09" text-anchor="middle" dominant-baseline="central" font-family="Segoe UI, DejaVu Sans, sans-serif" font-size="0.16666666666666666" font-weight="400" fill="#4c5d56">Filtered HNSW (approximate top 10)</text>
+<text x="8.55" y="8.09" text-anchor="middle" dominant-baseline="central" font-family="Segoe UI, DejaVu Sans, sans-serif" font-size="0.16666666666666666" font-weight="400" fill="#4c5d56">Exact cosine top 10 (optional HNSW)</text>
 <text x="8.55" y="8.348333333333333" text-anchor="middle" dominant-baseline="central" font-family="Segoe UI, DejaVu Sans, sans-serif" font-size="0.16666666666666666" font-weight="400" fill="#4c5d56">Search all filtered, model-compatible IDs</text>
 <polyline points="3.45,8.75 3.45,9.030000000000001 6,9.030000000000001 6,9.32" fill="none" stroke="#73877b" stroke-width="0.02"/>
 <polygon points="6,9.32 6.06,9.200000000000001 5.94,9.200000000000001" fill="#73877b"/>

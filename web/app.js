@@ -7,6 +7,16 @@ const componentScore = (item, name) => item.score_components?.includes(name) ? s
 const percentage = (value) => typeof value === "number" && Number.isFinite(value) ? Math.min(100, Math.max(0, value * 100)) : 0;
 const label = (value) => String(value || "").replaceAll("_", " ");
 const state = { config: null, preview: [], run: null, view: "grid", busy: false, lastAttemptFailed: false, attempt: 0, runAttempt: null, baseline: null, revealPending: false };
+state.comparisonMode = "reference";
+state.references = null;
+state.rankingMethod = "hybrid";
+
+function visibleRun() {
+  const clipRun = state.run?.clip_comparisons?.[state.rankingMethod];
+  if (clipRun) return {...clipRun, settings: state.run.settings, timings: state.run.timings};
+  if (state.run?.comparison && state.comparisonMode === "legacy") return {...state.run, ...state.run.comparison};
+  return state.run;
+}
 const weightControls = { text: "weight-text", graph: "weight-graph", style: "weight-style" };
 let defaultWeightPoints = { text: 55, graph: 35, style: 10 };
 
@@ -66,16 +76,18 @@ function handleImageErrors(container) {
 }
 
 function renderItems() {
-  const items = state.run ? state.run.items : state.preview;
+  const run = visibleRun();
+  const items = run ? run.items : state.preview;
   const ranked = Boolean(state.run);
+  const clip = run?.score_type === "raw_cosine";
   $("results-eyebrow").textContent = ranked ? "RANKED RESULTS" : "UNRANKED";
   $("results-title").firstChild.textContent = ranked ? "Search results" : "Catalog preview";
   $("result-count").textContent = items.length;
   $("results-caption").textContent = ranked
-    ? `${items.length} ranked ${items.length === 1 ? "match" : "matches"} from ${state.run.candidate_count} fetched candidates · “${state.run.query}”`
+    ? `${clip ? `CLIP · ${run.scope === "catalog" ? "Full catalog" : "Same candidates"} · ` : state.run.comparison ? `${state.comparisonMode === "legacy" ? "Legacy" : "Image reference"} · ` : ""}${items.length} ranked ${items.length === 1 ? "match" : "matches"} from ${run.candidate_count} candidates · “${state.run.query}”`
     : "Preview images. Run a query to retrieve and rank matching items.";
   $("catalog-footnote").textContent = ranked
-    ? "Select an item for matched attributes and score details. G = graph, T = semantic, S = style."
+    ? clip ? `Raw CLIP cosine · ${run.truncated ? "Query truncated to 77 tokens · " : ""}${run.missing_candidate_ids?.length ? `${run.missing_candidate_ids.length} candidates missing from CLIP index` : "OpenAI ViT-B/32 · ONNX int8"}` : "Select an item for matched attributes and score details. G = graph, T = semantic, S = style."
     : "Preview only. No ranking scores.";
   $("results-grid").innerHTML = items.map((item, index) => {
     const matches = (item.matched_filters || []).slice(0, 2).map((m) => m.value).filter(Boolean).join(" · ");
@@ -84,12 +96,12 @@ function renderItems() {
       <span class="card-meta">
         <span class="card-title">${ranked ? `<span class="card-rank">${String(index + 1).padStart(2, "0")}</span>` : ""}<span>${escapeHTML(item.type_name || item.type_code || "Garment")}</span><span class="card-id">${escapeHTML(item.id)}</span></span>
         <span class="card-subtitle">${ranked ? escapeHTML(matches || "Inspect ranking details") : "Not ranked"}</span>
-        ${ranked ? `<span class="card-score"><strong>${score(item.score)}</strong><span class="card-components"><span>G ${componentScore(item, "graph")}</span><span>T ${componentScore(item, "text")}</span><span>S ${componentScore(item, "style")}</span></span></span>` : ""}
+        ${ranked ? `<span class="card-score"><strong>${score(item.score)}</strong><span class="card-components">${clip ? "CLIP cosine" : `<span>G ${componentScore(item, "graph")}</span><span>T ${componentScore(item, "text")}</span><span>S ${componentScore(item, "style")}</span>`}</span></span>` : ""}
       </span>
     </button>`;
   }).join("");
   handleImageErrors($("results-grid"));
-  $("ranking-table").innerHTML = `<table><caption class="sr-only">${ranked ? "Retrieval scores; N/A means unavailable or inactive" : "Unranked catalog preview"}</caption><thead><tr>${ranked ? '<th scope="col">Rank</th>' : ""}<th scope="col">Item</th><th scope="col">Type</th>${ranked ? '<th scope="col">Final</th><th scope="col">Graph</th><th scope="col">Semantic</th><th scope="col">Style</th>' : ""}</tr></thead><tbody>${items.map((item, index) => `<tr>${ranked ? `<td>${index + 1}</td>` : ""}<td><button type="button" data-item="${index}" aria-label="Inspect ${escapeHTML(item.id)}">${escapeHTML(item.id)}</button></td><td>${escapeHTML(item.type_name || item.type_code || "Garment")}</td>${ranked ? `<td><strong>${score(item.score)}</strong></td><td>${componentScore(item, "graph")}</td><td>${componentScore(item, "text")}</td><td>${componentScore(item, "style")}</td>` : ""}</tr>`).join("")}</tbody></table>`;
+  $("ranking-table").innerHTML = `<table><caption class="sr-only">${ranked ? "Retrieval scores; N/A means unavailable or inactive" : "Unranked catalog preview"}</caption><thead><tr>${ranked ? '<th scope="col">Rank</th>' : ""}<th scope="col">Item</th><th scope="col">Type</th>${ranked ? clip ? '<th scope="col">CLIP cosine</th>' : '<th scope="col">Final</th><th scope="col">Graph</th><th scope="col">Semantic</th><th scope="col">Style</th>' : ""}</tr></thead><tbody>${items.map((item, index) => `<tr>${ranked ? `<td>${index + 1}</td>` : ""}<td><button type="button" data-item="${index}" aria-label="Inspect ${escapeHTML(item.id)}">${escapeHTML(item.id)}</button></td><td>${escapeHTML(item.type_name || item.type_code || "Garment")}</td>${ranked ? `<td><strong>${score(item.score)}</strong></td>${clip ? "" : `<td>${componentScore(item, "graph")}</td><td>${componentScore(item, "text")}</td><td>${componentScore(item, "style")}</td>`}` : ""}</tr>`).join("")}</tbody></table>`;
   $("empty-state").hidden = items.length > 0;
   $("empty-state").querySelector("h3").textContent = !ranked && !items.length ? "No preview images" : "No matching items";
   $("empty-state").querySelector("p").textContent = !ranked && !items.length
@@ -100,7 +112,7 @@ function renderItems() {
 
 function applyView() {
   $("results-grid").hidden = state.view !== "grid";
-  $("ranking-table").hidden = state.view !== "table" || !(state.run ? state.run.items.length : state.preview.length);
+  $("ranking-table").hidden = state.view !== "table" || !(visibleRun() ? visibleRun().items.length : state.preview.length);
   const baselineLoading = state.baseline?.status === "loading";
   const baselineItems = state.baseline?.data?.items || [];
   $("baseline-grid").hidden = !baselineLoading && (state.view !== "grid" || !baselineItems.length);
@@ -243,6 +255,7 @@ function highlightCypher(query) {
 function resetEvidence(running = false) {
   $("inspector-intro").hidden = false;
   $("search-insights").hidden = true;
+  $("reference-evidence").hidden = true;
   $("query-plan").hidden = false;
   $("query-state").textContent = running ? "Awaiting response" : "Not executed";
   $("cypher-code").textContent = running
@@ -263,8 +276,14 @@ function resetEvidence(running = false) {
 }
 
 function renderInsights() {
-  const run = state.run;
+  const run = visibleRun();
   if (!run) { resetEvidence(); return; }
+  $("ranking-method-label").hidden = !state.run.clip_comparisons;
+  $("comparison-switch").hidden = !state.run.comparison || run.score_type === "raw_cosine";
+  $("raw-extraction").hidden = run.score_type === "raw_cosine";
+  $("inspector-title").textContent = run.score_type === "raw_cosine" ? "CLIP retrieval" : "Extracted constraints";
+  $("inspector-title").nextElementSibling.textContent = run.score_type === "raw_cosine" ? "OpenAI CLIP ViT-B/32 · ONNX CPU" : "Structured output from the query parser.";
+  if (run.score_type === "raw_cosine") { renderClipInsights(run); return; }
   $("inspector-intro").hidden = true;
   $("search-insights").hidden = false;
   $("query-plan").hidden = false;
@@ -281,6 +300,15 @@ function renderInsights() {
     <div class="insight-section"><h3 class="insight-label">Excluded attributes (${excluded.length})</h3>${excluded.length ? tags(excluded, true) : '<p class="muted">None extracted</p>'}</div>
     <div class="insight-section"><h3 class="insight-label">Semantic description</h3><p${extracted.description_query ? "" : ' class="muted"'}>${escapeHTML(extracted.description_query || "Not requested")}</p></div>
     <div class="insight-section"><h3 class="insight-label">Style targets (${axes.length})</h3>${axes.length ? axes.map((t) => axisMarkup(t)).join("") : '<p class="muted">Not requested</p>'}</div>`;
+  const calibration = state.run.extraction.style_calibration;
+  $("reference-evidence").hidden = !calibration;
+  if (calibration) {
+    $("reference-evidence").innerHTML = `<h3 class="insight-label">Reference calibration</h3>${calibration.assessments.length ? calibration.assessments.map((assessment) => {
+      const baseline = calibration.baseline_targets.find((target) => target.axis === assessment.axis);
+      const coverage = state.run.style_coverage?.find((entry) => entry.axis === assessment.axis);
+      return `<div class="reference-assessment"><button type="button" class="link-button" data-reference-axis="${escapeHTML(assessment.axis)}">${escapeHTML(label(assessment.axis))}</button><p>Legacy ${score(baseline?.target)} → Reference ${score(assessment.target)}</p><p class="muted">Confidence ${score(assessment.confidence)} · ${assessment.active ? "Accepted target" : "Omitted target"}</p>${coverage ? `<p class="${coverage.available_candidates ? "muted" : "weight-invalid"}">Stored axis values: ${coverage.available_candidates}/${coverage.total_candidates} candidates${coverage.available_candidates ? "" : ". Style scoring unavailable."}</p>` : ""}<p>${escapeHTML(assessment.evidence)}</p>${assessment.ambiguity_reason ? `<p>${escapeHTML(assessment.ambiguity_reason)}</p>` : ""}<small>${assessment.supporting_reference_ids.map(escapeHTML).join(", ")}</small></div>`;
+    }).join("") : '<p class="muted">No requested style axes.</p>'}`;
+  }
   $("cypher-code").innerHTML = highlightCypher(searchCypher(run));
   $("cypher-code").parentElement.classList.remove("empty-code");
   $("query-state").textContent = state.lastAttemptFailed ? "Previous run · candidate query" : "Candidate query";
@@ -288,8 +316,8 @@ function renderInsights() {
   $("parameter-list").innerHTML = `<dl>${Object.entries(run.params).map(([key, value]) => `<div class="parameter-row"><dt>$${escapeHTML(key)}</dt><dd>${escapeHTML(JSON.stringify(value))}</dd></div>`).join("")}</dl>`;
   $("extraction-code").textContent = JSON.stringify(extracted, null, 2);
   const settings = run.settings;
-  $("run-summary").textContent = `Parser: ${settings.model} · Results: ${settings.limit} · Min. score: ${settings.min_score ?? "off"} · Min. attribute match: ${settings.min_confidence ?? "off"} · Weights: ${effectiveWeightLabel(settings.weights || {text: .55, graph: .35, style: .10})}. ${run.reranked ? "Weighted reranking applied." : "Graph ranking only."}`;
-  $("run-state").textContent = state.lastAttemptFailed ? "Previous run" : "Completed";
+  $("run-summary").textContent = `Style: ${run.mode || settings.style_mode || "legacy"} · Parser: ${settings.model} · Results: ${settings.limit} · Min. score: ${settings.min_score ?? "off"} · Min. attribute match: ${settings.min_confidence ?? "off"} · Weights: ${effectiveWeightLabel(settings.weights || {text: .55, graph: .35, style: .10})}. ${run.reranked ? "Weighted reranking applied." : "Graph ranking only."}`;
+  $("run-state").textContent = state.lastAttemptFailed ? "Previous run" : run.cache?.hit ? "Cached result" : "Completed";
   $("parse-time").textContent = `${run.timings.parse_ms} ms`;
   $("graph-time").textContent = `${run.timings.graph_ms} ms`;
   $("rerank-time").textContent = `${run.timings.rerank_ms} ms`;
@@ -298,20 +326,44 @@ function renderInsights() {
   for (const id of ["export-run", "copy-cypher", "copy-params", "expand-cypher"]) $(id).disabled = false;
 }
 
+function renderClipInsights(run) {
+  resetEvidence();
+  $("inspector-intro").hidden = true;
+  $("search-insights").hidden = false;
+  $("query-plan").hidden = true;
+  const params = {model: run.model, model_revision: run.model_revision, index_revision: run.index_revision,
+    dimensions: 512, provider: "CPUExecutionProvider", scope: run.scope,
+    token_count: run.token_count, token_limit: 77, truncated: run.truncated,
+    missing_candidate_ids: run.missing_candidate_ids || [], runtime: run.runtime};
+  $("search-insights").innerHTML = `<dl>${Object.entries(params).map(([key, value]) => `<div class="insight-section"><dt class="insight-label">${escapeHTML(label(key))}</dt><dd>${escapeHTML(typeof value === "object" ? JSON.stringify(value) : value)}</dd></div>`).join("")}</dl>`;
+  $("params-code").textContent = JSON.stringify(params, null, 2);
+  $("parameter-list").innerHTML = `<p>Raw cosine: L2-normalized text vector · image vector</p><p class="muted">${run.scope === "catalog" ? "Full catalog; no graph or style filters." : "Hybrid fetched candidate pool; no final hybrid score threshold."}</p>`;
+  $("run-summary").textContent = `OpenAI CLIP ViT-B/32 · ONNX int8 · ${run.candidate_count} images · ${run.token_count} tokens${run.truncated ? " (truncated to 77)" : ""}`;
+  $("run-state").textContent = state.lastAttemptFailed ? "Previous run" : "Completed";
+  $("parse-time").textContent = run.timings.encode_ms === undefined ? "Shared run" : `${run.timings.encode_ms} ms`;
+  $("graph-time").textContent = "Not used";
+  $("rerank-time").textContent = "Exact cosine";
+  $("candidate-count").textContent = run.candidate_count;
+  $("total-time").textContent = `${(run.timings.total_ms / 1000).toFixed(2)} s`;
+  $("export-run").disabled = false;
+  $("copy-params").disabled = false;
+}
+
 function attributeList(attributes) {
   return `<div class="attribute-list">${attributes.map((a) => `<div class="attribute-entry"><span><small>${escapeHTML(label(a.group))}</small><br>${escapeHTML(a.value)}</span><strong>${score(a.score)}</strong></div>`).join("")}</div>`;
 }
 
 function openItem(index) {
-  const item = (state.run ? state.run.items : state.preview)[index];
+  const item = (visibleRun() ? visibleRun().items : state.preview)[index];
   if (!item || state.busy) return;
   const ranked = Boolean(state.run);
   const components = item.score_components || [];
-  const rows = [["Final", item.score, true], ["Graph", item.graph_score, components.includes("graph")], ["Semantic", item.text_score, components.includes("text")], ["Style", item.style_score, components.includes("style")]];
-  const appliedWeights = ranked ? effectiveWeightLabel(state.run.settings.weights || {text: .55, graph: .35, style: .10}) : "";
+  const clip = visibleRun()?.score_type === "raw_cosine";
+  const rows = clip ? [["CLIP cosine", item.clip_score, true]] : [["Final", item.score, true], ["Graph", item.graph_score, components.includes("graph")], ["Semantic", item.text_score, components.includes("text")], ["Style", item.style_score, components.includes("style")]];
+  const appliedWeights = ranked && !clip ? effectiveWeightLabel(state.run.settings.weights || {text: .55, graph: .35, style: .10}) : "";
   $("item-dialog-content").innerHTML = `<div class="dialog-layout"><div>${imageMarkup(item, "dialog-image")}</div><div class="dialog-copy"><p class="eyebrow">${ranked ? `RANK ${String(index + 1).padStart(2, "0")} / MATCH EVIDENCE` : "CATALOG PREVIEW"}</p><h2 id="item-dialog-title">${escapeHTML(item.type_name || item.type_code || "Garment")}</h2><p>${escapeHTML(item.id)}</p>
-    ${ranked ? `<div class="score-breakdown">${rows.map(([name, value, active]) => `<div class="score-row${active ? "" : " inactive"}"><span>${name}</span><span class="score-bar" aria-hidden="true"><span style="width:${active ? percentage(value) : 0}%"></span></span><strong>${active ? score(value) : "N/A"}</strong></div>`).join("")}</div><p class="dialog-note">Configured weights: ${escapeHTML(appliedWeights)}. Available components are normalized for this item. N/A means unavailable or zero weight. Scores are not probabilities.</p>
-      <h3>Matched graph attributes</h3>${item.matched_filters?.length ? attributeList(item.matched_filters) : '<p class="muted">No scored attribute matches for this query.</p>'}
+    ${ranked ? `<div class="score-breakdown">${rows.map(([name, value, active]) => `<div class="score-row${active ? "" : " inactive"}"><span>${name}</span><span class="score-bar" aria-hidden="true"><span style="width:${active ? percentage(value) : 0}%"></span></span><strong>${active ? score(value) : "N/A"}</strong></div>`).join("")}</div><p class="dialog-note">${clip ? "Raw text–image cosine in [-1, 1]. Not a probability or a hybrid weighted score." : `Configured weights: ${escapeHTML(appliedWeights)}. Available components are normalized for this item. N/A means unavailable or zero weight. Scores are not probabilities.`}</p>
+      ${clip ? "" : `<h3>Matched graph attributes</h3>${item.matched_filters?.length ? attributeList(item.matched_filters) : '<p class="muted">No scored attribute matches for this query.</p>'}`}
       ${item.style_axis_matches?.length ? `<h3>Style-axis evidence</h3>${item.style_axis_matches.map((t) => axisMarkup(t, t.value)).join("")}` : ""}
       ${item.mapped_attributes?.length ? `<h3>All mapped attributes</h3>${attributeList(item.mapped_attributes)}` : ""}`
     : '<p>Run retrieval to inspect matched attributes and component scores for this item.</p><div class="method-note">Preview only. This item has not been ranked for a query.</div>'}
@@ -339,7 +391,8 @@ function setBusy(busy) {
   $("search-button").disabled = busy;
   $("search-button-text").textContent = busy ? "Searching..." : "Search";
   $("results-section").setAttribute("aria-busy", String(busy));
-  document.querySelectorAll("#search-form input, #search-form select, #reset-weights, [data-query], .view-switch button").forEach((el) => { el.disabled = busy; });
+  document.querySelectorAll("#search-form input, #search-form select, #reset-weights, [data-query], .view-switch button, #ranking-method").forEach((el) => { el.disabled = busy; });
+  if (!busy) updateRetrievalControls();
   if (busy) {
     resetEvidence(true);
     $("results-grid").hidden = false;
@@ -360,7 +413,8 @@ $("search-form").addEventListener("submit", async (event) => {
   const query = $("query").value.trim();
   if (!query) { notice("Describe the fashion items you are looking for.", "error"); $("query").focus(); return; }
   const weights = selectedWeights();
-  if (Object.values(weights).every((value) => value === 0)) {
+  const clip = $("retrieval-mode").value === "clip";
+  if (!clip && Object.values(weights).every((value) => value === 0)) {
     $("settings").hidden = false;
     $("settings-toggle").setAttribute("aria-expanded", "true");
     $("settings-toggle").textContent = "Close settings";
@@ -369,13 +423,17 @@ $("search-form").addEventListener("submit", async (event) => {
     $("weight-text").focus();
     return;
   }
-  if (!state.config?.ready) {
+  if (clip ? !state.config?.clip?.available : !state.config?.ready) {
+    if (clip) { notice("CLIP catalog index is unavailable on this server.", "error"); return; }
     notice(state.config?.preview
       ? "You’re viewing the catalog preview. Start the live web server with configured OpenAI and Neo4j credentials to run a search."
       : "Live search is not ready. Check the server’s OpenAI and Neo4j configuration, then reload the page.", "error");
     return;
   }
   const payload = {query, model: $("model").value.trim(), limit: Number($("limit").value), min_score: Number($("min-score").value), min_confidence: Number($("min-confidence").value), weights};
+  payload.style_mode = $("style-mode").value;
+  payload.compare_styles = payload.style_mode === "reference" && $("compare-styles").checked;
+  payload.compare_clip = $("compare-clip").checked;
   state.lastAttemptFailed = false;
   const attempt = ++state.attempt;
   state.revealPending = false;
@@ -383,13 +441,16 @@ $("search-form").addEventListener("submit", async (event) => {
   let succeeded = false;
   setBusy(true);
   runBaseline(payload, attempt);
-  notice("Running query parsing, graph retrieval and reranking...", "loading");
+  notice(clip ? "Running CLIP ONNX retrieval..." : "Running query parsing, graph retrieval and reranking...", "loading");
   const timer = setInterval(() => notice(`Search in progress · ${Math.round((Date.now() - started) / 1000)}s elapsed. Waiting for the retrieval response.`, "loading"), 1000);
   try {
-    state.run = await api("/api/search", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload), signal: AbortSignal.timeout(240000)});
+    state.run = await api(clip ? "/api/clip/search" : "/api/search", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(clip ? {query, limit: payload.limit} : payload), signal: AbortSignal.timeout(240000)});
     state.runAttempt = attempt;
     succeeded = true;
-    notice(`Found ${state.run.result_count} ranked ${state.run.result_count === 1 ? "match" : "matches"} in ${(state.run.timings.total_ms / 1000).toFixed(1)}s. Constraints, Cypher and ranking evidence are available below.`);
+    state.rankingMethod = "hybrid";
+    $("ranking-method").value = "hybrid";
+    selectComparison("reference");
+    notice(`Found ${state.run.result_count} ranked ${state.run.result_count === 1 ? "match" : "matches"} in ${(state.run.timings.total_ms / 1000).toFixed(1)}s.${state.run.cache?.hit ? " Reused the saved result for these search settings." : ""}${state.run.truncated ? " CLIP query truncated to 77 tokens." : ""}`);
   } catch (error) {
     state.lastAttemptFailed = true;
     const message = error.name === "TimeoutError" ? "The search took too long. Please try a simpler query." : error.message || "Could not connect to the search server.";
@@ -402,6 +463,59 @@ $("search-form").addEventListener("submit", async (event) => {
     renderBaselineOverlap();
     if (succeeded) revealResults();
   }
+});
+
+function selectComparison(mode) {
+  state.comparisonMode = mode;
+  for (const name of ["reference", "legacy"]) {
+    $(`${name}-results`).classList.toggle("active", mode === name);
+    $(`${name}-results`).setAttribute("aria-pressed", String(mode === name));
+  }
+}
+
+for (const mode of ["reference", "legacy"]) $(`${mode}-results`).addEventListener("click", () => {
+  selectComparison(mode);
+  renderItems();
+  renderInsights();
+});
+$("style-mode").addEventListener("change", () => {
+  updateRetrievalControls();
+});
+$("ranking-method").addEventListener("change", () => {
+  state.rankingMethod = $("ranking-method").value;
+  renderItems();
+  renderInsights();
+});
+function updateRetrievalControls() {
+  const clip = $("retrieval-mode").value === "clip";
+  for (const id of ["style-mode", "model", "min-score", "min-confidence", "reset-weights", ...Object.values(weightControls)]) $(id).disabled = clip || state.busy;
+  $("compare-styles").disabled = clip || state.busy || $("style-mode").value !== "reference";
+  $("compare-clip").disabled = clip || state.busy || !state.config?.clip?.available;
+}
+$("retrieval-mode").addEventListener("change", updateRetrievalControls);
+
+function showReferenceImage() {
+  const axis = state.references?.axes.find((entry) => entry.id === $("reference-axis").value);
+  if (!axis) return;
+  $("reference-image").src = axis.image_url;
+  $("reference-image").alt = `${axis.label}: reference examples at labeled score levels`;
+  $("reference-scale").textContent = `${axis.question} Levels: ${axis.levels.map((value) => value.toFixed(2)).join(" / ")}`;
+}
+
+async function openReferences(axisId) {
+  try {
+    state.references ||= await api("/api/style-references");
+    $("reference-axis").innerHTML = state.references.axes.map((axis) => `<option value="${escapeHTML(axis.id)}">${escapeHTML(axis.label)}</option>`).join("");
+    if (axisId) $("reference-axis").value = axisId;
+    showReferenceImage();
+    $("reference-dialog").showModal();
+  } catch (error) { notice(error.message, "error"); }
+}
+$("browse-references").addEventListener("click", () => openReferences());
+$("reference-axis").addEventListener("change", showReferenceImage);
+$("reference-evidence").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-reference-axis]");
+  if (button) openReferences(button.dataset.referenceAxis);
 });
 
 document.querySelectorAll("[data-query]").forEach((button) => button.addEventListener("click", () => {
@@ -463,7 +577,7 @@ $("copy-cypher").addEventListener("click", () => {
   if (state.run && !state.busy) copyRunText("copy-cypher", "cypher-code", searchCypher(state.run));
 });
 $("copy-params").addEventListener("click", () => {
-  if (state.run && !state.busy) copyRunText("copy-params", "params-code", JSON.stringify(state.run.params, null, 2));
+  if (state.run && !state.busy) copyRunText("copy-params", "params-code", $("params-code").textContent);
 });
 $("wrap-cypher").addEventListener("change", () => {
   $("cypher-code").parentElement.classList.toggle("no-wrap", !$("wrap-cypher").checked);
@@ -496,7 +610,8 @@ async function init() {
       updateWeightControls();
     }
     $("model-options").innerHTML = state.config.models.map((model) => `<option value="${escapeHTML(model)}"></option>`).join("");
-    $("runtime-label").innerHTML = `<span class="status-dot${state.config.ready ? " live" : ""}"></span>` + (state.config.ready ? ` Live search configured${state.config.baseline_ready ? " · CLIP baseline" : ""}` : state.config.preview ? " Catalog preview · Search offline" : " Catalog preview · Search not configured");
+    $("runtime-label").innerHTML = `<span class="status-dot${state.config.ready || state.config.clip?.available ? " live" : ""}"></span>` + (state.config.ready ? ` Live search configured${state.config.baseline_ready ? " · CLIP baseline" : ""}` : state.config.clip?.available ? " CLIP ONNX ready" : state.config.preview ? " Catalog preview · Search offline" : " Catalog preview · Search not configured");
+    if (!state.config.ready && state.config.clip?.available) $("retrieval-mode").value = "clip";
   } else {
     $("runtime-label").textContent = "Server unavailable";
     notice("Could not connect to the server. Reload the page after checking the server is running.", "error");
@@ -508,6 +623,7 @@ async function init() {
   else notice("The collection could not be loaded. Reload the page to try again.", "error");
   renderItems();
   renderInsights();
+  updateRetrievalControls();
 }
 
 init();

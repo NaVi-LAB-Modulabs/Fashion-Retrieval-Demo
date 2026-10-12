@@ -12,7 +12,7 @@ from time import perf_counter
 from typing import Any
 from urllib.parse import quote
 
-from . import baseline, hybrid_search, search
+from . import baseline, clip_onnx, hybrid_search, search, style_references
 from .diagnostics import RetrievalFailure, retrieval_stage
 from .neo4j_config import (
     DEFAULT_NEO4J_DATABASE, DEFAULT_NEO4J_PASSWORD,
@@ -20,6 +20,10 @@ from .neo4j_config import (
 )
 from .taxonomy import CATEGORY_NAMES
 from .llm import default_model
+from .reproducibility import (
+    cached, cache_enabled, dataset_revision, fingerprint, normalize_query,
+    resolve_model, vector_search_mode,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 # Served from the CDN on Vercel (public/ is static there) and by the /images route locally.
@@ -68,6 +72,7 @@ def configuration(*, preview: bool = False) -> dict[str, Any]:
     neo4j_configured = bool(DEFAULT_NEO4J_URI and DEFAULT_NEO4J_PASSWORD)
     configured = bool(os.getenv("OPENAI_API_KEY") and neo4j_configured)
     catalog = search.search_catalog()
+    clip_config = clip_onnx.configuration()
     return {
         "ready": configured and not preview,
         "preview": preview,
@@ -75,13 +80,15 @@ def configuration(*, preview: bool = False) -> dict[str, Any]:
         "baseline_ready": neo4j_configured and baseline.encoder_available() and not preview,
         "baseline_model": baseline.CLIP_MODEL,
         "default_model": default_model(),
-        "models": list(dict.fromkeys([default_model(), "gpt-4.1-mini", "gpt-4.1"])),
+        "models": list(dict.fromkeys([default_model(), resolve_model("gpt-4.1-mini"), resolve_model("gpt-4.1")])),
         "image_count": len(manifest_ids()),
         "type_count": len(catalog["item_types"]),
         "style_axis_count": len(catalog["style_axes"]),
         "type_names": CATEGORY_NAMES,
         "style_axes": search.STYLE_AXES,
         "default_weights": hybrid_search.DEFAULT_WEIGHTS,
+        "style_modes": ["legacy", "reference"],
+        "clip": {**clip_config, "available": clip_config["available"] and not preview},
     }
 
 
@@ -170,7 +177,20 @@ def validate_request(payload: dict[str, Any]) -> dict[str, Any]:
     model = payload.get("model") or default_model()
     if not isinstance(model, str) or len(model) > 100 or not model.strip():
         raise ValueError("Choose a valid parser model.")
-    values["model"] = model.strip()
+    values["query"] = normalize_query(values["query"])
+    values["model"] = resolve_model(model.strip())
+    style_mode = payload.get("style_mode", "legacy")
+    if style_mode not in ("legacy", "reference"):
+        raise ValueError("Choose legacy or reference style calibration.")
+    values["style_mode"] = style_mode
+    compare = payload.get("compare_styles", False)
+    if type(compare) is not bool or (compare and style_mode != "reference"):
+        raise ValueError("Style comparison requires reference mode and a boolean compare_styles.")
+    values["compare_styles"] = compare
+    compare_clip = payload.get("compare_clip", False)
+    if type(compare_clip) is not bool:
+        raise ValueError("compare_clip must be a boolean.")
+    values["compare_clip"] = compare_clip
     for name in ("min_confidence", "min_score"):
         value = payload.get(name, 0.0)
         if value is not None and (
@@ -197,10 +217,41 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
     if not configuration()["ready"]:
         raise RuntimeError("Search is not configured. Set the OpenAI and Neo4j environment variables on the server.")
     started = perf_counter()
+    signature = {
+        "request": request, "embedding_model": search.DEFAULT_EMBEDDING_MODEL,
+        "vector_index": hybrid_search.DESCRIPTION_VECTOR_INDEX,
+        "vector_search_mode": vector_search_mode(),
+        "database": {"uri": DEFAULT_NEO4J_URI, "database": DEFAULT_NEO4J_DATABASE,
+                     "user": DEFAULT_NEO4J_USER},
+        "provider": os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+        "style_reference_revision": style_references.reference_revision() if request["style_mode"] == "reference" else None,
+        "clip_index_revision": clip_onnx.index_revision() if request["compare_clip"] else None,
+        "clip_runtime": clip_onnx.runtime_provenance() if request["compare_clip"] else None,
+    }
+    entry = cached("search", signature, lambda: _retrieve_uncached(request))
+    response = entry.value
+    original_timings = dict(response["timings"])
+    if entry.hit:
+        response["timings"] = {"parse_ms": 0, "graph_ms": 0, "rerank_ms": 0,
+                               "total_ms": round((perf_counter() - started) * 1000)}
+    response["cache"] = {"enabled": cache_enabled(), "hit": entry.hit,
+                         "key": entry.key, "created_at": entry.created_at,
+                         "original_timings": original_timings}
+    return response
+
+
+def _retrieve_uncached(request: dict[str, Any]) -> dict[str, Any]:
+    started = perf_counter()
     with retrieval_stage("query parsing"):
         extraction = search.extract_search_filters(
             request["query"], client=openai_client(), model=request["model"],
         )
+    baseline_extraction = extraction
+    if request["style_mode"] == "reference":
+        with retrieval_stage("reference style calibration"):
+            extraction = style_references.calibrate_query(
+                request["query"], extraction, client=openai_client(), model=request["model"],
+            )
     parsed = perf_counter()
 
     def select_and_fetch(session: Any) -> tuple[Any, ...]:
@@ -228,19 +279,73 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
             min_confidence=request["min_confidence"], min_score=request["min_score"],
             weights=request["weights"],
         )
+        baseline_items = hybrid_search.rerank(
+            raw_results, baseline_extraction, limit=request["limit"],
+            min_confidence=request["min_confidence"], min_score=request["min_score"],
+            weights=request["weights"],
+        ) if request["compare_styles"] else None
     params = {
         **hybrid_search.candidate_cypher(extraction)[1],
         "candidate_ids": candidate_ids,
         "item_type_codes": query_params["item_type_codes"],
         "candidate_branch_limit": hybrid_search.CANDIDATE_BRANCH_SIZE,
         "vector_index": hybrid_search.DESCRIPTION_VECTOR_INDEX,
+        "vector_search_mode": vector_search_mode(),
         "filtered_ids": "<all hard-filtered IDs with matching embedding model; omitted>",
         "embedding_model": search.DEFAULT_EMBEDDING_MODEL,
         "query_embedding": f"<{len(embedding)} dimensions; omitted from response>",
+        "query_embedding_sha256": fingerprint(embedding),
         "min_confidence": request["min_confidence"],
         "min_score": request["min_score"],
         "weights": request["weights"],
+        "style_mode": request["style_mode"],
     }
+    results = public_items(items)
+    baseline_results = public_items(baseline_items) if baseline_items is not None else None
+    clip_comparisons = None
+    if request["compare_clip"]:
+        with retrieval_stage("CLIP comparison"):
+            vector, count, truncated = clip_onnx.encode_text(request["query"])
+            # Compare the entire fetched pool, not the final hybrid top-k.
+            image_ids = [str(item.get("item_ID") or item["id"]) for item in raw_results]
+            clip_comparisons = {
+                scope: {**clip_onnx.rank_vector(vector, limit=request["limit"], **options),
+                        "query": request["query"], "token_count": count, "truncated": truncated}
+                for scope, options in [("same_candidates", {"candidate_ids": image_ids}), ("catalog", {})]
+            }
+    finished = perf_counter()
+    response = {
+        "query": request["query"], "settings": request, "items": results,
+        "extraction": extraction, "cypher": cypher, "params": params,
+        "candidate_cypher": hybrid_search.candidate_cypher(extraction)[0],
+        "description_candidate_cypher": hybrid_search.description_candidate_cypher(),
+        "candidate_count": len(raw_results), "result_count": len(results),
+        "style_coverage": [{"axis": target["axis"], "total_candidates": len(raw_results),
+                            "available_candidates": sum(search._to_float(item.get(target["axis"])) is not None
+                                                        for item in raw_results)}
+                           for target in baseline_extraction.get("style_axis_targets", [])],
+        "reranked": True, "embedding_model": search.DEFAULT_EMBEDDING_MODEL,
+        "reproducibility": {"dataset_revision": dataset_revision(),
+                            "parser_model": request["model"],
+                            "vector_search_mode": vector_search_mode(),
+                            "style_reference_revision": extraction.get("style_calibration", {}).get("revision"),
+                            "query_embedding_sha256": fingerprint(embedding)},
+        "timings": {"parse_ms": round((parsed - started) * 1000),
+                    "graph_ms": round((retrieved - parsed) * 1000),
+                    "rerank_ms": round((finished - retrieved) * 1000),
+                    "total_ms": round((finished - started) * 1000)},
+    }
+    if baseline_results is not None:
+        response["comparison"] = {"mode": "legacy", "items": baseline_results,
+                                  "result_count": len(baseline_results), "extraction": baseline_extraction,
+                                  "same_candidate_pool": True,
+                                  "candidate_ids": candidate_ids}
+    if clip_comparisons is not None:
+        response["clip_comparisons"] = clip_comparisons
+    return response
+
+
+def public_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     # Only expose fields needed to explain retrieval; never serialize arbitrary DB properties.
     fields = ("id", "category", "category_name", "type_code", "type_name", "score", "graph_score", "text_score",
               "style_score", "score_components", "matched_filters", "mapped_attributes", "style_axis_matches")
@@ -249,19 +354,7 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
         public = {key: item.get(key) for key in fields}
         public.update(rank=rank, **item_identity(item))
         results.append(public)
-    finished = perf_counter()
-    return {
-        "query": request["query"], "settings": request, "items": results,
-        "extraction": extraction, "cypher": cypher, "params": params,
-        "candidate_cypher": hybrid_search.candidate_cypher(extraction)[0],
-        "description_candidate_cypher": hybrid_search.description_candidate_cypher(),
-        "candidate_count": len(raw_results), "result_count": len(results),
-        "reranked": True, "embedding_model": search.DEFAULT_EMBEDDING_MODEL,
-        "timings": {"parse_ms": round((parsed - started) * 1000),
-                    "graph_ms": round((retrieved - parsed) * 1000),
-                    "rerank_ms": round((finished - retrieved) * 1000),
-                    "total_ms": round((finished - started) * 1000)},
-    }
+    return results
 
 
 def retrieve_baseline(payload: dict[str, Any]) -> dict[str, Any]:

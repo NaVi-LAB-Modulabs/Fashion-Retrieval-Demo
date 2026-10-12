@@ -1,0 +1,970 @@
+{
+  "version": "query_style_references_v1",
+  "source": "Fashion-Retrieval/fashion200k_global_axes.py",
+  "source_sha256": "6419af6a5576a00eafab0c817c1e1b92ab14947d819aae37e14248c76598930a",
+  "gallery_id": "a1fd28515031023a9ff63b2fbf32055eb9f76242eeac23724673e47d331bb911",
+  "axes": [
+    {
+      "id": "visual_trend",
+      "label": "Statement-led \u2194 Timeless",
+      "question": "How experimental or statement-led versus restrained and enduring is the visible garment design? Do not predict current popularity.",
+      "score_hints": {
+        "0.25": "Visibly experimental or statement-led design.",
+        "0.50": "Balanced or ambiguous; no clear directional design cues.",
+        "0.75": "Mostly restrained, classic and enduring design.",
+        "1.00": "Strongly timeless, restrained and enduring design."
+      },
+      "neutral_hint": "",
+      "levels": [
+        0.25,
+        0.5,
+        0.75,
+        1.0
+      ],
+      "references": [
+        {
+          "id": "90311225_0",
+          "level": 0.25
+        },
+        {
+          "id": "4944991_0",
+          "level": 0.25
+        },
+        {
+          "id": "89610337_0",
+          "level": 0.25
+        },
+        {
+          "id": "90301512_0",
+          "level": 0.25
+        },
+        {
+          "id": "91203815_0",
+          "level": 0.25
+        },
+        {
+          "id": "91221312_0",
+          "level": 0.25
+        },
+        {
+          "id": "88023869_0",
+          "level": 0.25
+        },
+        {
+          "id": "90857201_0",
+          "level": 0.25
+        },
+        {
+          "id": "89610344_0",
+          "level": 0.25
+        },
+        {
+          "id": "91023112_0",
+          "level": 0.25
+        },
+        {
+          "id": "91389318_0",
+          "level": 0.5
+        },
+        {
+          "id": "91390779_0",
+          "level": 0.5
+        },
+        {
+          "id": "91204902_0",
+          "level": 0.5
+        },
+        {
+          "id": "88891670_0",
+          "level": 0.5
+        },
+        {
+          "id": "87905909_0",
+          "level": 0.5
+        },
+        {
+          "id": "89665795_0",
+          "level": 0.5
+        },
+        {
+          "id": "91375582_0",
+          "level": 0.5
+        },
+        {
+          "id": "90084745_0",
+          "level": 0.5
+        },
+        {
+          "id": "87899138_0",
+          "level": 0.5
+        },
+        {
+          "id": "87913335_0",
+          "level": 0.5
+        },
+        {
+          "id": "87912512_0",
+          "level": 0.75
+        },
+        {
+          "id": "89609523_0",
+          "level": 0.75
+        },
+        {
+          "id": "89662782_0",
+          "level": 0.75
+        },
+        {
+          "id": "87915227_0",
+          "level": 0.75
+        },
+        {
+          "id": "89660742_0",
+          "level": 0.75
+        },
+        {
+          "id": "89660891_0",
+          "level": 0.75
+        },
+        {
+          "id": "89609442_0",
+          "level": 0.75
+        },
+        {
+          "id": "88863557_0",
+          "level": 0.75
+        },
+        {
+          "id": "88812782_0",
+          "level": 0.75
+        },
+        {
+          "id": "88832489_0",
+          "level": 0.75
+        },
+        {
+          "id": "91018131_0",
+          "level": 1.0
+        },
+        {
+          "id": "53878566_0",
+          "level": 1.0
+        },
+        {
+          "id": "91019676_0",
+          "level": 1.0
+        },
+        {
+          "id": "91207001_0",
+          "level": 1.0
+        },
+        {
+          "id": "90840101_0",
+          "level": 1.0
+        },
+        {
+          "id": "89476704_0",
+          "level": 1.0
+        },
+        {
+          "id": "91207272_0",
+          "level": 1.0
+        },
+        {
+          "id": "91376541_0",
+          "level": 1.0
+        },
+        {
+          "id": "91271876_0",
+          "level": 1.0
+        },
+        {
+          "id": "91377882_0",
+          "level": 1.0
+        }
+      ],
+      "image": "visual_trend.jpg",
+      "image_sha256": "85cc0a55be79cac3039526eedc7d8c6f611ce99d5696701cee0221c57e39da86"
+    },
+    {
+      "id": "thermal_impression",
+      "label": "Cool-looking \u2194 Warm-looking",
+      "question": "How light, open and ventilated versus thick, enclosing and insulating does the visible garment appear? This is visual impression, not measured thermal performance.",
+      "score_hints": {
+        "0.25": "Light, open or airy construction.",
+        "0.50": "Neutral or ambiguous apparent warmth.",
+        "0.75": "Noticeably substantial, covered or warm-looking construction.",
+        "1.00": "Strongly enclosing, substantial and insulating-looking construction."
+      },
+      "neutral_hint": "Use 0.50 for moderate, transitional, spring/fall-like, medium-weight, or visually mixed garments. Do not force summer-like or winter-like scores unless the visible construction clearly supports light/open/ventilated or thick/enclosing/insulating. Ambiguous apparent warmth MUST be 0.50.",
+      "levels": [
+        0.25,
+        0.5,
+        0.75,
+        1.0
+      ],
+      "references": [
+        {
+          "id": "90832551_0",
+          "level": 0.25
+        },
+        {
+          "id": "64538036_0",
+          "level": 0.25
+        },
+        {
+          "id": "91276519_0",
+          "level": 0.25
+        },
+        {
+          "id": "90830655_0",
+          "level": 0.25
+        },
+        {
+          "id": "91254053_0",
+          "level": 0.25
+        },
+        {
+          "id": "90829725_0",
+          "level": 0.25
+        },
+        {
+          "id": "70807805_0",
+          "level": 0.25
+        },
+        {
+          "id": "91272947_0",
+          "level": 0.25
+        },
+        {
+          "id": "90832988_0",
+          "level": 0.25
+        },
+        {
+          "id": "89610222_0",
+          "level": 0.25
+        },
+        {
+          "id": "87982464_0",
+          "level": 0.5
+        },
+        {
+          "id": "90574421_0",
+          "level": 0.5
+        },
+        {
+          "id": "89610337_0",
+          "level": 0.5
+        },
+        {
+          "id": "89665041_0",
+          "level": 0.5
+        },
+        {
+          "id": "90836194_0",
+          "level": 0.5
+        },
+        {
+          "id": "90302098_0",
+          "level": 0.5
+        },
+        {
+          "id": "59971236_0",
+          "level": 0.5
+        },
+        {
+          "id": "68883590_0",
+          "level": 0.5
+        },
+        {
+          "id": "89528585_0",
+          "level": 0.5
+        },
+        {
+          "id": "91254299_0",
+          "level": 0.5
+        },
+        {
+          "id": "91018131_0",
+          "level": 0.75
+        },
+        {
+          "id": "91203815_0",
+          "level": 0.75
+        },
+        {
+          "id": "88827117_0",
+          "level": 0.75
+        },
+        {
+          "id": "87912648_0",
+          "level": 0.75
+        },
+        {
+          "id": "87937228_0",
+          "level": 0.75
+        },
+        {
+          "id": "91019676_0",
+          "level": 0.75
+        },
+        {
+          "id": "89367367_0",
+          "level": 0.75
+        },
+        {
+          "id": "63027957_0",
+          "level": 0.75
+        },
+        {
+          "id": "89665795_0",
+          "level": 0.75
+        },
+        {
+          "id": "90133012_0",
+          "level": 0.75
+        },
+        {
+          "id": "89530376_0",
+          "level": 1.0
+        },
+        {
+          "id": "53878566_0",
+          "level": 1.0
+        },
+        {
+          "id": "89536788_0",
+          "level": 1.0
+        },
+        {
+          "id": "89494909_0",
+          "level": 1.0
+        },
+        {
+          "id": "62671650_0",
+          "level": 1.0
+        },
+        {
+          "id": "90306704_0",
+          "level": 1.0
+        },
+        {
+          "id": "54963299_0",
+          "level": 1.0
+        },
+        {
+          "id": "89396188_0",
+          "level": 1.0
+        },
+        {
+          "id": "89536808_0",
+          "level": 1.0
+        },
+        {
+          "id": "61539080_0",
+          "level": 1.0
+        }
+      ],
+      "image": "thermal_impression.jpg",
+      "image_sha256": "be1e6d2269bdd3113bd0ed2a3520c4a6c3d48bd3a228976bc288d2f42b03dd83"
+    },
+    {
+      "id": "design_expression",
+      "label": "Soft-romantic \u2194 Mannish design",
+      "question": "How visibly soft, draped or romantic versus angular, tailored or menswear-inspired is the garment's design language?",
+      "score_hints": {
+        "0.25": "Clear soft-romantic construction or ornament, rather than category alone.",
+        "0.50": "Neutral design language or insufficient directional visual evidence.",
+        "0.75": "Clear tailored, angular or menswear-inspired design cues.",
+        "1.00": "Strong, explicit mannish or menswear-inspired construction."
+      },
+      "neutral_hint": "For skirts and dresses, start from 0.50 (neutral). Do not score an item as feminine, soft-romantic or mannish merely because it is a skirt or dress. Absence of mannish cues is not evidence of strong femininity. Move away from 0.50 only when explicit garment-level construction, draping, ornament or menswear-inspired tailoring clearly supports the direction. If both directions remain plausible, or evidence is weak, score 0.50. Ignore the wearer's gender, body and pose.",
+      "levels": [
+        0.25,
+        0.5,
+        0.75,
+        1.0
+      ],
+      "references": [
+        {
+          "id": "90311225_0",
+          "level": 0.25
+        },
+        {
+          "id": "89610337_0",
+          "level": 0.25
+        },
+        {
+          "id": "90836194_0",
+          "level": 0.25
+        },
+        {
+          "id": "90832551_0",
+          "level": 0.25
+        },
+        {
+          "id": "59971236_0",
+          "level": 0.25
+        },
+        {
+          "id": "90830326_0",
+          "level": 0.25
+        },
+        {
+          "id": "90304715_0",
+          "level": 0.25
+        },
+        {
+          "id": "89610344_0",
+          "level": 0.25
+        },
+        {
+          "id": "91276519_0",
+          "level": 0.25
+        },
+        {
+          "id": "90830655_0",
+          "level": 0.25
+        },
+        {
+          "id": "89662782_0",
+          "level": 0.5
+        },
+        {
+          "id": "91207630_0",
+          "level": 0.5
+        },
+        {
+          "id": "70643114_0",
+          "level": 0.5
+        },
+        {
+          "id": "91021723_0",
+          "level": 0.5
+        },
+        {
+          "id": "91018131_0",
+          "level": 0.5
+        },
+        {
+          "id": "89665041_0",
+          "level": 0.5
+        },
+        {
+          "id": "89664349_0",
+          "level": 0.5
+        },
+        {
+          "id": "89666616_0",
+          "level": 0.5
+        },
+        {
+          "id": "90133443_0",
+          "level": 0.5
+        },
+        {
+          "id": "89528585_0",
+          "level": 0.5
+        },
+        {
+          "id": "91389318_0",
+          "level": 0.75
+        },
+        {
+          "id": "87912512_0",
+          "level": 0.75
+        },
+        {
+          "id": "88847032_0",
+          "level": 0.75
+        },
+        {
+          "id": "91397350_0",
+          "level": 0.75
+        },
+        {
+          "id": "87915227_0",
+          "level": 0.75
+        },
+        {
+          "id": "91019676_0",
+          "level": 0.75
+        },
+        {
+          "id": "91023112_0",
+          "level": 0.75
+        },
+        {
+          "id": "89396188_0",
+          "level": 0.75
+        },
+        {
+          "id": "91375548_0",
+          "level": 0.75
+        },
+        {
+          "id": "61539080_0",
+          "level": 0.75
+        },
+        {
+          "id": "89494909_0",
+          "level": 1.0
+        },
+        {
+          "id": "88064698_0",
+          "level": 1.0
+        },
+        {
+          "id": "90116945_0",
+          "level": 1.0
+        },
+        {
+          "id": "90107960_0",
+          "level": 1.0
+        },
+        {
+          "id": "89375336_0",
+          "level": 1.0
+        },
+        {
+          "id": "89496012_0",
+          "level": 1.0
+        },
+        {
+          "id": "89430238_0",
+          "level": 1.0
+        },
+        {
+          "id": "56093095_0",
+          "level": 1.0
+        },
+        {
+          "id": "88823650_0",
+          "level": 1.0
+        },
+        {
+          "id": "89663135_0",
+          "level": 1.0
+        }
+      ],
+      "image": "design_expression.jpg",
+      "image_sha256": "edf8004077bb388ed63fc11ac873557957245b41de0673d3c09575465c4816a9"
+    },
+    {
+      "id": "young_mature",
+      "label": "Young \u2194 Mature",
+      "question": "How youthful, playful or girlish versus mature, composed or adult does the visible garment design feel? Judge garment design only, not the model's age, body, pose or styling.",
+      "score_hints": {
+        "0.00": "Strongly young, playful or girlish design cues.",
+        "0.25": "Mostly young or playful design cues.",
+        "0.50": "Neutral, balanced or ambiguous maturity impression.",
+        "0.75": "Mostly mature, composed or adult design cues.",
+        "1.00": "Strongly mature, polished or adult design cues."
+      },
+      "neutral_hint": "",
+      "levels": [
+        0.0,
+        0.25,
+        0.5,
+        0.75,
+        1.0
+      ],
+      "references": [
+        {
+          "id": "young_mature_0_00_ref_1",
+          "level": 0.0
+        },
+        {
+          "id": "young_mature_0_00_ref_2",
+          "level": 0.0
+        },
+        {
+          "id": "young_mature_0_00_ref_3",
+          "level": 0.0
+        },
+        {
+          "id": "young_mature_0_00_ref_4",
+          "level": 0.0
+        },
+        {
+          "id": "young_mature_0_25_ref_1",
+          "level": 0.25
+        },
+        {
+          "id": "young_mature_0_25_ref_2",
+          "level": 0.25
+        },
+        {
+          "id": "young_mature_0_25_ref_3",
+          "level": 0.25
+        },
+        {
+          "id": "young_mature_0_25_ref_4",
+          "level": 0.25
+        },
+        {
+          "id": "young_mature_0_50_ref_1",
+          "level": 0.5
+        },
+        {
+          "id": "young_mature_0_50_ref_2",
+          "level": 0.5
+        },
+        {
+          "id": "young_mature_0_50_ref_3",
+          "level": 0.5
+        },
+        {
+          "id": "young_mature_0_50_ref_4",
+          "level": 0.5
+        },
+        {
+          "id": "young_mature_0_75_ref_1",
+          "level": 0.75
+        },
+        {
+          "id": "young_mature_0_75_ref_2",
+          "level": 0.75
+        },
+        {
+          "id": "young_mature_0_75_ref_3",
+          "level": 0.75
+        },
+        {
+          "id": "young_mature_0_75_ref_4",
+          "level": 0.75
+        },
+        {
+          "id": "young_mature_1_00_ref_1",
+          "level": 1.0
+        },
+        {
+          "id": "young_mature_1_00_ref_2",
+          "level": 1.0
+        },
+        {
+          "id": "young_mature_1_00_ref_3",
+          "level": 1.0
+        },
+        {
+          "id": "young_mature_1_00_ref_4",
+          "level": 1.0
+        }
+      ],
+      "image": "young_mature.jpg",
+      "image_sha256": "d0b4df96063dd7e461325c4bd703ace896d7882ae6b09521d7dac7229dfe1d26"
+    },
+    {
+      "id": "soft_sharp",
+      "label": "Soft \u2194 Sharp",
+      "question": "How soft, rounded or gentle versus sharp, crisp or angular is the visible garment design language?",
+      "score_hints": {
+        "0.00": "Strongly soft, rounded or gentle construction and details.",
+        "0.25": "Mostly soft design cues.",
+        "0.50": "Neutral, balanced or ambiguous softness/sharpness.",
+        "0.75": "Mostly sharp, crisp or angular design cues.",
+        "1.00": "Strongly sharp, structured or angular design language."
+      },
+      "neutral_hint": "",
+      "levels": [
+        0.0,
+        0.25,
+        0.5,
+        0.75,
+        1.0
+      ],
+      "references": [
+        {
+          "id": "soft_sharp_0_00_ref_1",
+          "level": 0.0
+        },
+        {
+          "id": "soft_sharp_0_00_ref_2",
+          "level": 0.0
+        },
+        {
+          "id": "soft_sharp_0_00_ref_3",
+          "level": 0.0
+        },
+        {
+          "id": "soft_sharp_0_00_ref_4",
+          "level": 0.0
+        },
+        {
+          "id": "soft_sharp_0_25_ref_1",
+          "level": 0.25
+        },
+        {
+          "id": "soft_sharp_0_25_ref_2",
+          "level": 0.25
+        },
+        {
+          "id": "soft_sharp_0_25_ref_3",
+          "level": 0.25
+        },
+        {
+          "id": "soft_sharp_0_25_ref_4",
+          "level": 0.25
+        },
+        {
+          "id": "soft_sharp_0_50_ref_1",
+          "level": 0.5
+        },
+        {
+          "id": "soft_sharp_0_50_ref_2",
+          "level": 0.5
+        },
+        {
+          "id": "soft_sharp_0_50_ref_3",
+          "level": 0.5
+        },
+        {
+          "id": "soft_sharp_0_50_ref_4",
+          "level": 0.5
+        },
+        {
+          "id": "soft_sharp_0_75_ref_1",
+          "level": 0.75
+        },
+        {
+          "id": "soft_sharp_0_75_ref_2",
+          "level": 0.75
+        },
+        {
+          "id": "soft_sharp_0_75_ref_3",
+          "level": 0.75
+        },
+        {
+          "id": "soft_sharp_0_75_ref_4",
+          "level": 0.75
+        },
+        {
+          "id": "soft_sharp_1_00_ref_1",
+          "level": 1.0
+        },
+        {
+          "id": "soft_sharp_1_00_ref_2",
+          "level": 1.0
+        },
+        {
+          "id": "soft_sharp_1_00_ref_3",
+          "level": 1.0
+        },
+        {
+          "id": "soft_sharp_1_00_ref_4",
+          "level": 1.0
+        }
+      ],
+      "image": "soft_sharp.jpg",
+      "image_sha256": "d42efe818cc9bd4c91747f0a1056e39f05acfbdd2a750c7e5a9d22282f7cc48f"
+    },
+    {
+      "id": "casual_formal",
+      "label": "Casual \u2194 Formal",
+      "question": "How casual, relaxed or everyday versus formal, polished or occasion-ready is the visible garment design? Use garment construction and finish, not brand or setting.",
+      "score_hints": {
+        "0.00": "Strongly casual, relaxed or everyday design.",
+        "0.25": "Mostly casual design cues.",
+        "0.50": "Neutral, balanced or ambiguous casual/formal level.",
+        "0.75": "Mostly formal, polished or occasion-ready design.",
+        "1.00": "Strongly formal, tailored or dressy design language."
+      },
+      "neutral_hint": "",
+      "levels": [
+        0.0,
+        0.25,
+        0.5,
+        0.75,
+        1.0
+      ],
+      "references": [
+        {
+          "id": "casual_formal_0_00_ref_1",
+          "level": 0.0
+        },
+        {
+          "id": "casual_formal_0_00_ref_2",
+          "level": 0.0
+        },
+        {
+          "id": "casual_formal_0_00_ref_3",
+          "level": 0.0
+        },
+        {
+          "id": "casual_formal_0_00_ref_4",
+          "level": 0.0
+        },
+        {
+          "id": "casual_formal_0_25_ref_1",
+          "level": 0.25
+        },
+        {
+          "id": "casual_formal_0_25_ref_2",
+          "level": 0.25
+        },
+        {
+          "id": "casual_formal_0_25_ref_3",
+          "level": 0.25
+        },
+        {
+          "id": "casual_formal_0_25_ref_4",
+          "level": 0.25
+        },
+        {
+          "id": "casual_formal_0_50_ref_1",
+          "level": 0.5
+        },
+        {
+          "id": "casual_formal_0_50_ref_2",
+          "level": 0.5
+        },
+        {
+          "id": "casual_formal_0_50_ref_3",
+          "level": 0.5
+        },
+        {
+          "id": "casual_formal_0_50_ref_4",
+          "level": 0.5
+        },
+        {
+          "id": "casual_formal_0_75_ref_1",
+          "level": 0.75
+        },
+        {
+          "id": "casual_formal_0_75_ref_2",
+          "level": 0.75
+        },
+        {
+          "id": "casual_formal_0_75_ref_3",
+          "level": 0.75
+        },
+        {
+          "id": "casual_formal_0_75_ref_4",
+          "level": 0.75
+        },
+        {
+          "id": "casual_formal_1_00_ref_1",
+          "level": 1.0
+        },
+        {
+          "id": "casual_formal_1_00_ref_2",
+          "level": 1.0
+        },
+        {
+          "id": "casual_formal_1_00_ref_3",
+          "level": 1.0
+        },
+        {
+          "id": "casual_formal_1_00_ref_4",
+          "level": 1.0
+        }
+      ],
+      "image": "casual_formal.jpg",
+      "image_sha256": "043dabc7ddb968493ebd6fc61fd8e970c60888a554e704d40a81b840fa389ee0"
+    },
+    {
+      "id": "minimal_maximal",
+      "label": "Minimal \u2194 Maximal",
+      "question": "How minimal, plain or restrained versus maximal, decorative or visually busy is the visible garment design?",
+      "score_hints": {
+        "0.00": "Strongly minimal, plain and restrained design.",
+        "0.25": "Mostly minimal or simple design cues.",
+        "0.50": "Neutral, balanced or ambiguous visual complexity.",
+        "0.75": "Mostly maximal, decorative or visually busy design.",
+        "1.00": "Strongly maximal, ornate or visually dense design language."
+      },
+      "neutral_hint": "",
+      "levels": [
+        0.0,
+        0.25,
+        0.5,
+        0.75,
+        1.0
+      ],
+      "references": [
+        {
+          "id": "minimal_maximal_0_00_ref_1",
+          "level": 0.0
+        },
+        {
+          "id": "minimal_maximal_0_00_ref_2",
+          "level": 0.0
+        },
+        {
+          "id": "minimal_maximal_0_00_ref_3",
+          "level": 0.0
+        },
+        {
+          "id": "minimal_maximal_0_00_ref_4",
+          "level": 0.0
+        },
+        {
+          "id": "minimal_maximal_0_25_ref_1",
+          "level": 0.25
+        },
+        {
+          "id": "minimal_maximal_0_25_ref_2",
+          "level": 0.25
+        },
+        {
+          "id": "minimal_maximal_0_25_ref_3",
+          "level": 0.25
+        },
+        {
+          "id": "minimal_maximal_0_25_ref_4",
+          "level": 0.25
+        },
+        {
+          "id": "minimal_maximal_0_50_ref_1",
+          "level": 0.5
+        },
+        {
+          "id": "minimal_maximal_0_50_ref_2",
+          "level": 0.5
+        },
+        {
+          "id": "minimal_maximal_0_50_ref_3",
+          "level": 0.5
+        },
+        {
+          "id": "minimal_maximal_0_50_ref_4",
+          "level": 0.5
+        },
+        {
+          "id": "minimal_maximal_0_75_ref_1",
+          "level": 0.75
+        },
+        {
+          "id": "minimal_maximal_0_75_ref_2",
+          "level": 0.75
+        },
+        {
+          "id": "minimal_maximal_0_75_ref_3",
+          "level": 0.75
+        },
+        {
+          "id": "minimal_maximal_0_75_ref_4",
+          "level": 0.75
+        },
+        {
+          "id": "minimal_maximal_1_00_ref_1",
+          "level": 1.0
+        },
+        {
+          "id": "minimal_maximal_1_00_ref_2",
+          "level": 1.0
+        },
+        {
+          "id": "minimal_maximal_1_00_ref_3",
+          "level": 1.0
+        },
+        {
+          "id": "minimal_maximal_1_00_ref_4",
+          "level": 1.0
+        }
+      ],
+      "image": "minimal_maximal.jpg",
+      "image_sha256": "b54e863ef8bcca8b8b072fe262bcf2553cd787ced8a7082ffa6679299c8aa7ba"
+    }
+  ]
+}

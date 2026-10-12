@@ -12,6 +12,11 @@ from fashion_how_graphdb import hybrid_search, search
 
 
 class Fashion200KSearchTests(unittest.TestCase):
+    def setUp(self):
+        isolation = patch.dict("os.environ", {"FASHION_CACHE_ENABLED": "0"})
+        isolation.start()
+        self.addCleanup(isolation.stop)
+
     def test_catalog_and_schema_use_fashion200k_categories(self):
         catalog = search.search_catalog()
         categories = {"dresses", "jackets", "pants", "skirts", "tops"}
@@ -81,7 +86,7 @@ class Fashion200KSearchTests(unittest.TestCase):
         self.assertEqual([item["value"] for item in result["common_filters"]], ["burgundy"])
         self.assertEqual(
             [(item["group"], item["value"]) for item in result["category_filters"]],
-            [("top_type", "blouse"), ("dress_silhouette", "flared")],
+            [("dress_silhouette", "flared"), ("top_type", "blouse")],
         )
 
 

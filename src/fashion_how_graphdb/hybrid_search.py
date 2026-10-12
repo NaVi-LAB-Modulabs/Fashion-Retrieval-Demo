@@ -8,6 +8,7 @@ from typing import Any
 
 from . import search
 from .category_taxonomy import category_attribute_id
+from .reproducibility import cached, fingerprint, normalize_query, vector_search_mode
 
 CANDIDATE_BRANCH_SIZE = 10
 DESCRIPTION_VECTOR_INDEX = (
@@ -19,8 +20,17 @@ STYLE_WEIGHT = 0.10
 DEFAULT_WEIGHTS = {"text": TEXT_WEIGHT, "graph": ATTRIBUTE_WEIGHT, "style": STYLE_WEIGHT}
 
 def query_embedding(client: Any, text: str, model: str) -> list[float]:
-    response = client.embeddings.create(model=model, input=text)
-    return [float(value) for value in response.data[0].embedding]
+    text = normalize_query(text)
+
+    def compute() -> list[float]:
+        response = client.embeddings.create(model=model, input=text)
+        embedding = [float(value) for value in response.data[0].embedding]
+        if not embedding or any(search._to_float(value) is None for value in embedding):
+            raise ValueError("Embedding must contain finite numbers")
+        return embedding
+
+    return cached("embedding", {"model": model, "input": text,
+                  "base_url": str(getattr(client, "base_url", ""))}, compute).value
 
 
 def _attribute_metric_name(attribute: dict[str, Any]) -> str | None:
@@ -139,6 +149,18 @@ def candidate_cypher(extraction: dict[str, Any]) -> tuple[str, dict[str, Any]]:
 
 
 def description_candidate_cypher() -> str:
+    if vector_search_mode() == "exact":
+        return (
+            "MATCH (item:Item)\n"
+            "WHERE item.id IN $filtered_ids\n"
+            "  AND item.description_embedding_model = $embedding_model\n"
+            "  AND item.description_embedding IS NOT NULL\n"
+            "WITH item, vector.similarity.cosine(\n"
+            "  item.description_embedding, $query_embedding) AS text_score\n"
+            "RETURN item.id AS id, text_score\n"
+            "ORDER BY text_score DESC, id ASC\n"
+            "LIMIT $branch_limit"
+        )
     # SEARCH requires a literal index identifier; quote environment configuration.
     index = DESCRIPTION_VECTOR_INDEX.replace("`", "``")
     return (
@@ -181,16 +203,17 @@ def select_candidates(
     )
     ids = [row["id"] for row in graph_rows]
     # Pass the entire filtered population, never just the attribute top 10.
-    filtered_ids = list(dict.fromkeys(row["id"] for row in rows if row["description_eligible"]))
+    filtered_ids = sorted(set(row["id"] for row in rows if row["description_eligible"]), key=str)
     if not filtered_ids:
         return list(dict.fromkeys(ids)), []
     semantic_query = search._normalize_description_query(extraction.get("description_query")) or query
     embedding = query_embedding(client, semantic_query, embedding_model)
     allowed_ids = set(filtered_ids)
-    text_rows = session.run(
-        description_candidate_cypher(), filtered_ids=filtered_ids,
-        query_embedding=embedding, branch_limit=CANDIDATE_BRANCH_SIZE,
-    )
+    text_params = {"filtered_ids": filtered_ids, "query_embedding": embedding,
+                   "branch_limit": CANDIDATE_BRANCH_SIZE}
+    if vector_search_mode() == "exact":
+        text_params["embedding_model"] = embedding_model
+    text_rows = session.run(description_candidate_cypher(), **text_params)
     ids.extend(row["id"] for row in text_rows if row["id"] in allowed_ids)
     return list(dict.fromkeys(ids)), embedding
 
@@ -381,7 +404,8 @@ def rerank(
     ranked = []
     for raw_item in results:
         item = dict(raw_item)
-        attributes = item.get("mapped_attributes") or []
+        attributes = sorted(item.get("mapped_attributes") or [], key=fingerprint)
+        item["mapped_attributes"] = attributes
         if not passes_hard_filters(attributes, extraction, min_confidence):
             continue
         graph, matched_filters = graph_score(attributes, extraction, min_confidence)

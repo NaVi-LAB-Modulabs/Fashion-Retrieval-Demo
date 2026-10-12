@@ -10,11 +10,15 @@ from urllib.parse import unquote, urlsplit
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "src"))
 from fashion_how_graphdb.web_service import catalog_preview, configuration, image_index
+from fashion_how_graphdb.style_references import reference_catalog
 
 
 class PreviewHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = unquote(urlsplit(self.path).path)
+        if path == "/api/style-references":
+            self.send_data(json.dumps(reference_catalog()).encode(), "application/json")
+            return
         if path in ("/api/config", "/api/preview"):
             data = configuration(preview=True) if path.endswith("config") else catalog_preview()
             self.send_data(json.dumps(data, ensure_ascii=False).encode(), "application/json")
