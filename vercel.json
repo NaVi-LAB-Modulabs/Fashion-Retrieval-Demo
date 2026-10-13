@@ -1,4 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "fastapi"
+  "framework": "fastapi",
+  "functions": {
+    "web_app.py": {
+      "excludeFiles": "{public/**,scripts/export_clip_text_onnx.py,requirements-export.txt}"
+    }
+  }
 }
