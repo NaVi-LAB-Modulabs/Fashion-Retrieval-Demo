@@ -6,19 +6,26 @@ import importlib.util
 import os
 from functools import lru_cache
 from pathlib import Path
+import tempfile
 from threading import Lock
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[2]
+from . import clip_onnx
 
 # Item.image_embedding was produced by this sentence-transformers model (fp32,
 # normalize_embeddings=True); the query must come from the same model's text tower.
 CLIP_MODEL = "clip-ViT-L-14"
 
-# That text tower exported by scripts/export_clip_text_onnx.py: fp16 weights, fp32 arithmetic.
-# Query embeddings match the torch model at cosine >= 0.9999998, without torch at runtime.
-TEXT_MODEL_PATH = Path(os.getenv("CLIP_TEXT_MODEL_PATH") or ROOT / "models" / "clip_text_fp16w.onnx")
-TOKENIZER_PATH = ROOT / "models" / "clip_tokenizer.json"
+# The same OpenAI ViT-L/14 text tower as an fp16 ONNX export on Hugging Face, downloaded on
+# first use like the CLIP comparison's model. Against the sentence-transformers fp32 model its
+# query embeddings agree at cosine 1.0000 (the int8 export drifts to 0.83-0.91), and its
+# tokenizer gives the same ids.
+TEXT_MODEL_REPO = "Xenova/clip-vit-large-patch14"
+TEXT_MODEL_REVISION = "c307790166907339eed5a9a53a249af534102536"
+TEXT_MODEL_FILES = {
+    "model": ("onnx/text_model_fp16.onnx", "sha256", "643d385d6adbc4b9067f3f94384cc63a8409accb1bfd414496d17df84b161032"),
+    "tokenizer": ("tokenizer.json", "git", "f9d4455c06f24d31797f7cd3e480a83d7a84cb97"),
+}
 MAX_TOKENS = 77
 
 # Exact scan over every item (no ANN index, no filters). Neo4j returns
@@ -38,15 +45,20 @@ _encoder_lock = Lock()
 
 
 def encoder_available() -> bool:
-    return (
-        TEXT_MODEL_PATH.is_file() and TOKENIZER_PATH.is_file()
-        and _runtime_installed()
-    )
+    # The model is downloaded on first use, so only the runtime packages are checked here.
+    return _runtime_installed()
 
 
 @lru_cache(maxsize=1)
 def _runtime_installed() -> bool:
-    return all(importlib.util.find_spec(name) for name in ("onnxruntime", "tokenizers", "numpy"))
+    return all(importlib.util.find_spec(name) for name in ("onnxruntime", "tokenizers", "numpy", "httpx"))
+
+
+def text_model_file(kind: str) -> Path:
+    # Its own revision directory: the CLIP comparison's files have the same names.
+    directory = Path(os.getenv("FASHION_CLIP_MODEL_DIR") or
+                     Path(tempfile.gettempdir()) / "fashion-clip-onnx") / TEXT_MODEL_REVISION
+    return clip_onnx.hub_file(TEXT_MODEL_REPO, TEXT_MODEL_REVISION, *TEXT_MODEL_FILES[kind], directory)
 
 
 class ClipTextEncoder:
@@ -63,15 +75,16 @@ class ClipTextEncoder:
         import numpy as np
 
         input_ids = np.asarray([self.tokenizer.encode(text).ids], dtype=np.int64)
-        vector = self.session.run(None, {
-            "input_ids": input_ids, "attention_mask": np.ones_like(input_ids),
-        })[0][0]
+        feed = {"input_ids": input_ids, "attention_mask": np.ones_like(input_ids)}
+        # The Hugging Face export takes input_ids only.
+        vector = self.session.run(None, {entry.name: feed[entry.name] for entry in self.session.get_inputs()})[0][0]
+        vector = np.asarray(vector, dtype=np.float32)
         return [float(value) for value in vector / np.linalg.norm(vector)]
 
 
 @lru_cache(maxsize=1)
 def _load_encoder() -> ClipTextEncoder:
-    return ClipTextEncoder(TEXT_MODEL_PATH, TOKENIZER_PATH)
+    return ClipTextEncoder(text_model_file("model"), text_model_file("tokenizer"))
 
 
 def clip_encoder() -> ClipTextEncoder:
