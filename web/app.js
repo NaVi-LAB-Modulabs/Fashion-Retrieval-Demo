@@ -6,17 +6,9 @@ const score = (value) => typeof value === "number" && Number.isFinite(value) ? v
 const componentScore = (item, name) => item.score_components?.includes(name) ? score(item[`${name}_score`]) : "N/A";
 const percentage = (value) => typeof value === "number" && Number.isFinite(value) ? Math.min(100, Math.max(0, value * 100)) : 0;
 const label = (value) => String(value || "").replaceAll("_", " ");
-const state = { config: null, preview: [], run: null, view: "grid", busy: false, lastAttemptFailed: false, attempt: 0, runAttempt: null, baseline: null, revealPending: false };
-state.comparisonMode = "reference";
+// The CLIP baseline starts collapsed for every search so it is not mistaken for Fashion Search results.
+const state = { config: null, preview: [], run: null, view: "grid", busy: false, lastAttemptFailed: false, attempt: 0, runAttempt: null, baseline: null, baselineOpen: false, revealPending: false };
 state.references = null;
-state.rankingMethod = "hybrid";
-
-function visibleRun() {
-  const clipRun = state.run?.clip_comparisons?.[state.rankingMethod];
-  if (clipRun) return {...clipRun, settings: state.run.settings, timings: state.run.timings};
-  if (state.run?.comparison && state.comparisonMode === "legacy") return {...state.run, ...state.run.comparison};
-  return state.run;
-}
 const weightControls = { text: "weight-text", graph: "weight-graph", style: "weight-style" };
 let defaultWeightPoints = { text: 55, graph: 35, style: 10 };
 
@@ -76,7 +68,7 @@ function handleImageErrors(container) {
 }
 
 function renderItems() {
-  const run = visibleRun();
+  const run = state.run;
   const items = run ? run.items : state.preview;
   const ranked = Boolean(state.run);
   const clip = run?.score_type === "raw_cosine";
@@ -84,7 +76,7 @@ function renderItems() {
   $("results-title").firstChild.textContent = ranked ? "Search results" : "Catalog preview";
   $("result-count").textContent = items.length;
   $("results-caption").textContent = ranked
-    ? `${clip ? `CLIP · ${run.scope === "catalog" ? "Full catalog" : "Same candidates"} · ` : state.run.comparison ? `${state.comparisonMode === "legacy" ? "Legacy" : "Image reference"} · ` : ""}${items.length} ranked ${items.length === 1 ? "match" : "matches"} from ${run.candidate_count} candidates · “${state.run.query}”`
+    ? `${clip ? `CLIP · ${run.scope === "catalog" ? "Full catalog" : "Same candidates"} · ` : ""}${items.length} ranked ${items.length === 1 ? "match" : "matches"} from ${run.candidate_count} candidates · “${state.run.query}”`
     : "Preview images. Run a query to retrieve and rank matching items.";
   $("catalog-footnote").textContent = ranked
     ? clip ? `Raw CLIP cosine · ${run.truncated ? "Query truncated to 77 tokens · " : ""}${run.missing_candidate_ids?.length ? `${run.missing_candidate_ids.length} candidates missing from CLIP index` : "OpenAI ViT-B/32 · ONNX int8"}` : "Select an item for matched attributes and score details. G = graph, T = semantic, S = style."
@@ -112,7 +104,7 @@ function renderItems() {
 
 function applyView() {
   $("results-grid").hidden = state.view !== "grid";
-  $("ranking-table").hidden = state.view !== "table" || !(visibleRun() ? visibleRun().items.length : state.preview.length);
+  $("ranking-table").hidden = state.view !== "table" || !(state.run ? state.run.items.length : state.preview.length);
   const baselineLoading = state.baseline?.status === "loading";
   const baselineItems = state.baseline?.data?.items || [];
   $("baseline-grid").hidden = !baselineLoading && (state.view !== "grid" || !baselineItems.length);
@@ -144,6 +136,8 @@ function renderBaseline() {
   $("baseline-message").textContent = message;
   $("baseline-message").className = `baseline-message${baseline.status === "error" ? " error" : ""}`;
   $("baseline-message").hidden = !message;
+  $("baseline-toggle").hidden = !loading && !data;
+  applyBaselineToggle();
   $("baseline-grid").innerHTML = loading
     ? Array.from({length: Math.min(baseline.limit || 8, 8)}, () => '<div class="skeleton" aria-hidden="true"><div class="card-image"></div><div class="skeleton-line"></div><div class="skeleton-line short"></div></div>').join("")
     : items.map((item, index) => `<button type="button" class="item-card" style="--i:${index}" data-baseline-item="${index}" aria-label="Inspect ${escapeHTML(item.id)}, baseline rank ${index + 1}, cosine ${score(item.score)}">
@@ -164,6 +158,13 @@ function renderBaseline() {
   renderBaselineOverlap();
 }
 
+function applyBaselineToggle() {
+  const shown = !$("baseline-toggle").hidden;
+  $("baseline-body").hidden = !shown || !state.baselineOpen;
+  $("baseline-toggle").setAttribute("aria-expanded", String(shown && state.baselineOpen));
+  $("baseline-toggle").textContent = state.baselineOpen ? "Hide CLIP results" : "Show CLIP results";
+}
+
 // Updates overlap marks in place: the baseline is usually on screen when the main search
 // finishes, and rebuilding its cards would replay their entrance animation.
 function renderBaselineOverlap() {
@@ -173,6 +174,12 @@ function renderBaselineOverlap() {
   const items = data?.items || [];
   const ours = sharedRanks();
   const shared = ours ? items.filter((item) => ours.has(item.id)).length : 0;
+  const searching = state.busy && state.attempt === baseline.attempt;
+  $("baseline-hint").textContent = baseline.status === "loading"
+    ? `Scoring every catalog image with CLIP.${searching ? " You can open its results while Fashion Search runs." : ""}`
+    : data && searching ? "Fashion Search is still running. Meanwhile, you can check the CLIP baseline results."
+    : data ? `A separate CLIP comparison, not the Fashion Search results below.${ours ? ` ${shared} of ${items.length} also appear in them.` : ""}` : "";
+  $("baseline-hint").hidden = !$("baseline-hint").textContent;
   $("baseline-caption").textContent = baseline.status === "loading" ? "Encoding the query with CLIP and scoring every catalog image..."
     : data ? `${items.length} items by cosine similarity · “${data.query}”${ours ? ` · ${shared} of ${items.length} also in Fashion Search results` : ""}` : "";
   $("baseline-caption").hidden = !$("baseline-caption").textContent;
@@ -200,6 +207,7 @@ async function runBaseline(payload, attempt) {
     return;
   }
   state.baseline = {status: "loading", attempt, limit: payload.limit};
+  state.baselineOpen = false;
   renderBaseline();
   let result;
   try {
@@ -276,10 +284,8 @@ function resetEvidence(running = false) {
 }
 
 function renderInsights() {
-  const run = visibleRun();
+  const run = state.run;
   if (!run) { resetEvidence(); return; }
-  $("ranking-method-label").hidden = !state.run.clip_comparisons;
-  $("comparison-switch").hidden = !state.run.comparison || run.score_type === "raw_cosine";
   $("raw-extraction").hidden = run.score_type === "raw_cosine";
   $("inspector-title").textContent = run.score_type === "raw_cosine" ? "CLIP retrieval" : "Extracted constraints";
   $("inspector-title").nextElementSibling.textContent = run.score_type === "raw_cosine" ? "OpenAI CLIP ViT-B/32 · ONNX CPU" : "Structured output from the query parser.";
@@ -354,11 +360,11 @@ function attributeList(attributes) {
 }
 
 function openItem(index) {
-  const item = (visibleRun() ? visibleRun().items : state.preview)[index];
+  const item = (state.run ? state.run.items : state.preview)[index];
   if (!item || state.busy) return;
   const ranked = Boolean(state.run);
   const components = item.score_components || [];
-  const clip = visibleRun()?.score_type === "raw_cosine";
+  const clip = state.run?.score_type === "raw_cosine";
   const rows = clip ? [["CLIP cosine", item.clip_score, true]] : [["Final", item.score, true], ["Graph", item.graph_score, components.includes("graph")], ["Semantic", item.text_score, components.includes("text")], ["Style", item.style_score, components.includes("style")]];
   const appliedWeights = ranked && !clip ? effectiveWeightLabel(state.run.settings.weights || {text: .55, graph: .35, style: .10}) : "";
   $("item-dialog-content").innerHTML = `<div class="dialog-layout"><div>${imageMarkup(item, "dialog-image")}</div><div class="dialog-copy"><p class="eyebrow">${ranked ? `RANK ${String(index + 1).padStart(2, "0")} / MATCH EVIDENCE` : "CATALOG PREVIEW"}</p><h2 id="item-dialog-title">${escapeHTML(item.type_name || item.type_code || "Garment")}</h2><p>${escapeHTML(item.id)}</p>
@@ -391,7 +397,7 @@ function setBusy(busy) {
   $("search-button").disabled = busy;
   $("search-button-text").textContent = busy ? "Searching..." : "Search";
   $("results-section").setAttribute("aria-busy", String(busy));
-  document.querySelectorAll("#search-form input, #search-form select, #reset-weights, [data-query], .view-switch button, #ranking-method").forEach((el) => { el.disabled = busy; });
+  document.querySelectorAll("#search-form input, #search-form select, #reset-weights, [data-query], .view-switch button").forEach((el) => { el.disabled = busy; });
   if (!busy) updateRetrievalControls();
   if (busy) {
     resetEvidence(true);
@@ -432,8 +438,6 @@ $("search-form").addEventListener("submit", async (event) => {
   }
   const payload = {query, model: $("model").value.trim(), limit: Number($("limit").value), min_score: Number($("min-score").value), min_confidence: Number($("min-confidence").value), weights};
   payload.style_mode = $("style-mode").value;
-  payload.compare_styles = payload.style_mode === "reference" && $("compare-styles").checked;
-  payload.compare_clip = $("compare-clip").checked;
   state.lastAttemptFailed = false;
   const attempt = ++state.attempt;
   state.revealPending = false;
@@ -447,9 +451,6 @@ $("search-form").addEventListener("submit", async (event) => {
     state.run = await api(clip ? "/api/clip/search" : "/api/search", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(clip ? {query, limit: payload.limit} : payload), signal: AbortSignal.timeout(240000)});
     state.runAttempt = attempt;
     succeeded = true;
-    state.rankingMethod = "hybrid";
-    $("ranking-method").value = "hybrid";
-    selectComparison("reference");
     notice(`Found ${state.run.result_count} ranked ${state.run.result_count === 1 ? "match" : "matches"} in ${(state.run.timings.total_ms / 1000).toFixed(1)}s.${state.run.cache?.hit ? " Reused the saved result for these search settings." : ""}${state.run.truncated ? " CLIP query truncated to 77 tokens." : ""}`);
   } catch (error) {
     state.lastAttemptFailed = true;
@@ -465,32 +466,12 @@ $("search-form").addEventListener("submit", async (event) => {
   }
 });
 
-function selectComparison(mode) {
-  state.comparisonMode = mode;
-  for (const name of ["reference", "legacy"]) {
-    $(`${name}-results`).classList.toggle("active", mode === name);
-    $(`${name}-results`).setAttribute("aria-pressed", String(mode === name));
-  }
-}
-
-for (const mode of ["reference", "legacy"]) $(`${mode}-results`).addEventListener("click", () => {
-  selectComparison(mode);
-  renderItems();
-  renderInsights();
-});
 $("style-mode").addEventListener("change", () => {
   updateRetrievalControls();
-});
-$("ranking-method").addEventListener("change", () => {
-  state.rankingMethod = $("ranking-method").value;
-  renderItems();
-  renderInsights();
 });
 function updateRetrievalControls() {
   const clip = $("retrieval-mode").value === "clip";
   for (const id of ["style-mode", "model", "min-score", "min-confidence", "reset-weights", ...Object.values(weightControls)]) $(id).disabled = clip || state.busy;
-  $("compare-styles").disabled = clip || state.busy || $("style-mode").value !== "reference";
-  $("compare-clip").disabled = clip || state.busy || !state.config?.clip?.available;
 }
 $("retrieval-mode").addEventListener("change", updateRetrievalControls);
 
@@ -548,6 +529,10 @@ for (const mode of ["grid", "table"]) $(`${mode}-view`).addEventListener("click"
 for (const id of ["results-grid", "ranking-table"]) $(id).addEventListener("click", (event) => {
   const button = event.target.closest("[data-item]");
   if (button) openItem(Number(button.dataset.item));
+});
+$("baseline-toggle").addEventListener("click", () => {
+  state.baselineOpen = !state.baselineOpen;
+  applyBaselineToggle();
 });
 for (const id of ["baseline-grid", "baseline-table"]) $(id).addEventListener("click", (event) => {
   const button = event.target.closest("[data-baseline-item]");

@@ -50,9 +50,9 @@ No local GPU is required by the web retrieval path.
 ### CLIP ONNX comparison
 
 Choose **Retrieval: CLIP ONNX** to search the packaged 5,000-image catalog using
-OpenAI CLIP ViT-B/32 on CPU, without OpenAI/Neo4j credentials or PyTorch. In
-Hybrid mode, **Compare CLIP** adds both same-candidate reranking and full-catalog
-CLIP results. The **Ranking** selector switches methods; scores are raw CLIP
+OpenAI CLIP ViT-B/32 on CPU, without OpenAI/Neo4j credentials or PyTorch. Hybrid
+search can also return same-candidate reranking and full-catalog CLIP results
+through the API (`compare_clip`); the UI does not show them. Scores are raw CLIP
 cosines, not hybrid weighted scores. First use downloads a pinned text ONNX
 model and tokenizer to temporary storage. See [model provenance, algorithms,
 API requests and Recall@K evaluation](docs/clip-onnx-comparison.md).
@@ -265,10 +265,12 @@ python scripts\render_search_flow.py
 
 ## CLIP baseline
 
-For research comparison, each search also runs a plain CLIP baseline and shows it
-above the Fashion Search results. It usually returns first, so it can be read while the
-main search runs; when the main results arrive the page scrolls to them (after any
-open item dialog closes). The raw query text (not the parsed description) is
+For research comparison, each search also runs a plain CLIP baseline. It appears above
+the Fashion Search results but stays collapsed so it is not mistaken for them: a
+**Show CLIP results** button opens it, and every new search collapses it again. It
+usually returns first, so while the main search runs a note says its results can be
+checked in the meantime; when the main results arrive the page scrolls to them (after
+any open item dialog closes). The raw query text (not the parsed description) is
 encoded by the CLIP ViT-L/14 text encoder and every `Item` is ranked by exact cosine
 similarity with its stored `image_embedding`. There is no query parsing, hard filtering, graph scoring or
 reranking, so exclusions such as "not white" are not enforced. Scores are raw cosine
@@ -307,8 +309,8 @@ image_embedding_model    # clip-ViT-L-14
 
 The web UI now offers **Image references** and **Legacy** target modes. Image
 references sends the existing labeled calibration garments to the model at
-query time. Compare legacy reranks the identical candidate pool with both
-target sets, with reference images, confidence and target changes in the
+query time. The API's `compare_styles` reranks the identical candidate pool with both
+target sets (the UI does not show this comparison), with reference images, confidence and target changes in the
 inspector. Stored item axes and retrieval weights remain unchanged. The API
 defaults to legacy for compatibility. See
 [the experiment notes](docs/reference-style-experiment.md) for provenance,

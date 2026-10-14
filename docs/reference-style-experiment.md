@@ -33,9 +33,10 @@ and algorithm changes invalidate the relevant caches.
 
 ## Comparison
 
-The web UI defaults to Image references with Compare legacy enabled. A single
-search parses and retrieves once, then reranks the same raw candidates using
-both target sets. Reference/Legacy buttons switch the displayed results.
+The web UI defaults to Image references. With `compare_styles` in the API, a
+single search parses and retrieves once, then reranks the same raw candidates
+using both target sets. The Compare legacy checkbox and Reference/Legacy buttons
+were removed from the UI on 2026-10-15; the comparison remains available via the API.
 The inspector records baseline targets, calibrated targets, confidence,
 reference IDs and omission reasons. Reference images opens the actual sheets.
 Export run includes both rankings and the reference revision.
