@@ -76,7 +76,7 @@ def configuration(*, preview: bool = False) -> dict[str, Any]:
     return {
         "ready": configured and not preview,
         "preview": preview,
-        # The baseline needs only Neo4j and the exported CLIP text model, not OpenAI.
+        # The baseline needs only Neo4j, not OpenAI; its CLIP text model is downloaded on first use.
         "baseline_ready": neo4j_configured and baseline.encoder_available() and not preview,
         "baseline_model": baseline.CLIP_MODEL,
         "default_model": default_model(),
@@ -361,7 +361,7 @@ def retrieve_baseline(payload: dict[str, Any]) -> dict[str, Any]:
     """Rank every item by CLIP cosine between the raw query and its image embedding."""
     request = validate_baseline_request(payload)
     if not configuration()["baseline_ready"]:
-        raise RuntimeError("The CLIP baseline is not available. Provide the CLIP text model (models/) and configure Neo4j.")
+        raise RuntimeError("The CLIP baseline is not available. Configure Neo4j.")
     started = perf_counter()
     with retrieval_stage("CLIP query encoding"):
         embedding = baseline.text_embedding(baseline.clip_encoder(), request["query"])

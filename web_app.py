@@ -30,7 +30,7 @@ from fashion_how_graphdb.diagnostics import retrieval_stage
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> Any:
-    # Load CLIP in the background so the first baseline search does not pay the load time.
+    # Download and load CLIP in the background so the first baseline search does not wait for it.
     if configuration()["baseline_ready"]:
         Thread(target=baseline.clip_encoder, daemon=True).start()
     yield
@@ -98,7 +98,7 @@ def baseline_search(payload: dict[str, Any]) -> Any:
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     if not configuration()["baseline_ready"]:
-        raise HTTPException(503, "The CLIP baseline is not enabled on this server. Provide the CLIP text model (models/) and configure Neo4j.")
+        raise HTTPException(503, "The CLIP baseline is not enabled on this server. Configure Neo4j.")
     try:
         return retrieve_baseline(payload)
     except Exception as exc:

@@ -137,7 +137,8 @@ The vision tower (89.1 MB) is only required for offline indexing. No GPU or new
 API key is needed. Allow outbound HTTPS to Hugging Face; cold starts incur
 download/session initialization latency. Temporary model files and text caches
 are per-instance, not durable or shared. `FASHION_CLIP_MODEL_DIR` can specify
-a pre-provisioned directory on a local server; `FASHION_CLIP_THREADS` controls
+a pre-provisioned directory on a local server (the CLIP baseline's ViT-L/14 text
+model goes in a subdirectory named after its revision); `FASHION_CLIP_THREADS` controls
 CPU inference threads (default 2). Do not set a read-only download directory.
 Review the project's current [function limits](https://vercel.com/docs/functions/limitations).
 
