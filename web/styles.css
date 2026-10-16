@@ -53,10 +53,7 @@
 .style-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 24px; margin-top: 16px; font-size: 13px; }
 .style-controls label { display: flex; align-items: center; gap: 8px; }
 .style-controls select, .reference-select select { background: var(--surface); border: 1px solid var(--line-strong); border-radius: 6px; padding: 7px 10px; max-width: 100%; }
-#ranking-method-label { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 13px; max-width: 100%; }
-#ranking-method { background: var(--surface); border: 1px solid var(--line-strong); border-radius: 6px; padding: 7px 10px; max-width: 100%; }
 .insight-section dd { margin: 4px 0 0; font-size: 13px; overflow-wrap: anywhere; }
-.comparison-check input { accent-color: var(--ink); }
 #reference-evidence { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 16px; overflow-wrap: anywhere; }
 .reference-assessment { padding: 12px 0; border-bottom: 1px solid var(--line); }
 .reference-assessment p { font-size: 12px; margin: 6px 0; }
@@ -213,8 +210,14 @@ td button { background: transparent; border: 0; padding: 2px 0; text-decoration:
 tbody tr { transition: background .15s; }
 tbody tr:hover { background: var(--sunken); }
 
-/* Baseline comparison: sits above the results (it finishes first) and uses the same card grid. */
-.baseline { margin-bottom: 48px; padding-bottom: 8px; border-bottom: 1px solid var(--line-strong); }
+/* Baseline comparison: sits above the results (it finishes first), collapsed behind a toggle
+   so it is not read as the Fashion Search results, and uses the same card grid when opened. */
+.baseline { margin-bottom: 48px; padding-bottom: 24px; border-bottom: 1px solid var(--line-strong); }
+.baseline-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px 16px; flex-wrap: wrap; margin-top: 14px; }
+.baseline-hint { font-size: 13px; color: var(--ink-2); line-height: 1.6; max-width: 80ch; }
+.baseline-toggle { margin-left: auto; }
+.baseline-toggle[aria-expanded="true"] { border-color: var(--ink); }
+.baseline > .baseline-message { margin-top: 14px; }
 .baseline-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px 16px; flex-wrap: wrap; }
 #baseline-title { display: flex; gap: 10px; align-items: baseline; font-size: 22px; font-weight: 600; letter-spacing: -.03em; line-height: 1.1; }
 .method-chip { border: 1px solid var(--line-strong); border-radius: 999px; padding: 5px 12px; font: 11px var(--mono); color: var(--muted); white-space: nowrap; }

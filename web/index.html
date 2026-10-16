@@ -11,8 +11,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
-  <link rel="stylesheet" href="/assets/styles.css?v=20261012-baseline-clip">
-  <script src="/assets/app.js?v=20261012-baseline-clip" defer></script>
+  <link rel="stylesheet" href="/assets/styles.css?v=20261015-baseline-toggle">
+  <script src="/assets/app.js?v=20261015-baseline-toggle" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#query">Skip to search</a>
@@ -41,8 +41,6 @@
           <div class="style-controls">
             <label for="retrieval-mode">Retrieval <select id="retrieval-mode"><option value="hybrid">Hybrid</option><option value="clip">CLIP ONNX</option></select></label>
             <label for="style-mode">Style targets <select id="style-mode"><option value="reference" selected>Image references</option><option value="legacy">Legacy</option></select></label>
-            <label class="comparison-check"><input type="checkbox" id="compare-styles" checked> Compare legacy</label>
-            <label class="comparison-check"><input type="checkbox" id="compare-clip"> Compare CLIP</label>
             <button type="button" class="link-button" id="browse-references">Reference images</button>
           </div>
           <div class="settings" id="settings" hidden>
@@ -91,12 +89,18 @@
             </div>
             <span class="method-chip">ViT-L/14 · text → image cosine</span>
           </div>
-          <p class="baseline-description">The raw query is embedded by the CLIP text encoder and compared with every item’s image embedding. No query parsing, filters or reranking.</p>
-          <p class="results-caption" id="baseline-caption"></p>
-          <div class="results-grid" id="baseline-grid"></div>
-          <div id="baseline-table" class="table-wrap" hidden></div>
+          <div class="baseline-bar">
+            <p class="baseline-hint" id="baseline-hint" role="status"></p>
+            <button type="button" class="export-button baseline-toggle" id="baseline-toggle" aria-expanded="false" aria-controls="baseline-body">Show CLIP results</button>
+          </div>
           <p class="baseline-message" id="baseline-message" role="status" hidden></p>
-          <details class="baseline-query" id="baseline-query" hidden><summary>Baseline Cypher <span id="baseline-timing"></span></summary><pre><code id="baseline-cypher"></code></pre><p class="baseline-params" id="baseline-params"></p></details>
+          <div class="baseline-body" id="baseline-body" hidden>
+            <p class="baseline-description">The raw query is embedded by the CLIP text encoder and compared with every item’s image embedding. No query parsing, filters or reranking.</p>
+            <p class="results-caption" id="baseline-caption"></p>
+            <div class="results-grid" id="baseline-grid"></div>
+            <div id="baseline-table" class="table-wrap" hidden></div>
+            <details class="baseline-query" id="baseline-query" hidden><summary>Baseline Cypher <span id="baseline-timing"></span></summary><pre><code id="baseline-cypher"></code></pre><p class="baseline-params" id="baseline-params"></p></details>
+          </div>
         </section>
 
         <div class="results-head" id="results-head">
@@ -105,8 +109,6 @@
             <h2 id="results-title">Catalog preview<span class="count-badge" id="result-count">-</span></h2>
           </div>
           <div class="results-actions">
-            <label id="ranking-method-label" hidden>Ranking <select id="ranking-method"><option value="hybrid">Hybrid</option><option value="same_candidates">CLIP · same candidates</option><option value="catalog">CLIP · full catalog</option></select></label>
-            <div class="view-switch" id="comparison-switch" role="group" aria-label="Style comparison" hidden><button type="button" id="reference-results" class="active" aria-pressed="true">Reference</button><button type="button" id="legacy-results" aria-pressed="false">Legacy</button></div>
             <div class="view-switch" role="group" aria-label="Results view"><button type="button" id="grid-view" class="active" aria-pressed="true">Images</button><button type="button" id="table-view" aria-pressed="false">Scores</button></div>
             <button type="button" id="export-run" class="export-button" disabled>Export run <span>.json</span></button>
           </div>

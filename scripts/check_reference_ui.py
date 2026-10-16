@@ -30,7 +30,7 @@ def main() -> None:
             page.route("**/api/config", lambda route: route.fulfill(json=config))
             def recorded_search(route):
                 payload = route.request.post_data_json
-                assert payload["style_mode"] == "reference" and payload["compare_styles"] is True
+                assert payload["style_mode"] == "reference" and "compare_styles" not in payload
                 route.fulfill(json=run)
             page.route("**/api/search", recorded_search)
             page.goto(args.base_url, wait_until="domcontentloaded")
@@ -48,27 +48,22 @@ def main() -> None:
             page.keyboard.press("Escape")
             page.locator("#query").fill(run["query"])
             page.locator("#search-button").click()
-            page.wait_for_function("!document.querySelector('#comparison-switch').hidden")
+            page.wait_for_function("document.querySelector('#results-eyebrow').textContent === 'RANKED RESULTS'")
             assert page.locator(".reference-assessment").count() == len(run["extraction"]["style_calibration"]["assessments"])
-            reference_ids = page.locator(".item-card .card-id").all_text_contents()
+            reference_ids = page.locator("#results-grid .card-id").all_text_contents()
             assert reference_ids == [item["id"] for item in run["items"]]
             assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
             page.locator(".item-card img").evaluate_all("images => images.forEach(image => image.loading = 'eager')")
             page.wait_for_function("Array.from(document.querySelectorAll('.item-card img')).every(image => image.complete && image.naturalWidth > 0)")
             page.screenshot(path=str(args.output_dir / f"{name}-results.png"), full_page=True, animations="disabled")
-            page.locator("#legacy-results").click()
-            assert page.locator(".item-card .card-id").all_text_contents() == [item["id"] for item in run["comparison"]["items"]]
             page.locator("#table-view").click()
             assert page.locator("#ranking-table").is_visible()
-            page.locator("#reference-results").click()
             page.locator("#grid-view").click()
             page.locator(".item-card").first.click()
             assert page.locator("#item-dialog").is_visible()
             page.keyboard.press("Escape")
-            page.locator("#style-mode").select_option("legacy")
-            assert page.locator("#compare-styles").is_disabled()
             assert not errors, errors
-            print(f"{name}: reference assets, comparison, score table, details and layout passed")
+            print(f"{name}: reference assets, results, score table, details and layout passed")
             page.close()
         browser.close()
 

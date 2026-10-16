@@ -68,8 +68,9 @@ uploaded-reference-image CIR composition model.
 
 The UI offers `Retrieval: CLIP ONNX` for independent search. It works without
 OpenAI or Neo4j credentials when the packaged catalog index is present. Hybrid
-search with `Compare CLIP` checked exposes the two CLIP rankings under `Ranking`.
-JSON export preserves every comparison and checkpoint revision.
+search returns the two CLIP rankings when the API request sets `compare_clip`; the UI
+no longer requests or shows them. JSON export preserves every comparison and
+checkpoint revision.
 
 ```json
 POST /api/clip/search
