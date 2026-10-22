@@ -5,20 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f4f4f2" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#111112" media="(prefers-color-scheme: dark)">
-  <meta name="description" content="Search a fashion catalog in plain language and inspect the extracted constraints, generated Cypher and ranking evidence.">
-  <title>Fashion Search</title>
+  <meta name="description" content="FashioNavi: Navigating Fashion Retrieval through Knowledge Graphs and Interpretable Style Axes. Search a fashion catalog in plain language and inspect the extracted constraints, generated Cypher and ranking evidence.">
+  <title>FashioNavi</title>
   <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
-  <link rel="stylesheet" href="/assets/styles.css?v=20261015-baseline-toggle">
-  <script src="/assets/app.js?v=20261015-baseline-toggle" defer></script>
+  <link rel="stylesheet" href="/assets/styles.css?v=20261022-full-name">
+  <script src="/assets/app.js?v=20261022-full-name" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#query">Skip to search</a>
   <header class="site-header">
     <div class="header-inner">
-      <a class="brand" href="/" aria-label="Fashion Search home">Fashion Search<span>Research demo</span></a>
+      <a class="brand" href="/" aria-label="FashioNavi home">FashioNavi<span>Research demo</span></a>
       <div class="header-tools"><span id="runtime-label" role="status">Checking server...</span><button type="button" class="link-button" data-open-method>Method &amp; scoring</button></div>
     </div>
   </header>
@@ -26,8 +26,9 @@
   <main id="explore">
     <section class="hero" aria-label="Search">
       <div class="page-heading">
-        <h1>Search fashion the way you describe it.</h1>
-        <p>Query the catalog in plain language. Inspect the constraints, candidate query and ranking evidence behind every result.</p>
+        <h1>FashioNavi</h1>
+        <p class="tagline">Search fashion the way you describe it.</p>
+        <p class="full-name">Navigating Fashion Retrieval through Knowledge Graphs and Interpretable Style Axes</p>
       </div>
       <div class="search-panel">
         <form id="search-form">
@@ -149,7 +150,7 @@ Run retrieval to inspect the final candidate query here.</code></pre>
     </section>
   </main>
 
-  <footer class="site-footer"><p>Scoring: weighted mean of available semantic, graph and requested style components. <span>N/A = unavailable or inactive.</span></p><button type="button" class="link-button" data-open-method>Read the scoring method</button></footer>
+  <footer class="site-footer"><div><p class="site-name">FashioNavi: Navigating Fashion Retrieval through Knowledge Graphs and Interpretable Style Axes</p><p>Scoring: weighted mean of available semantic, graph and requested style components. <span>N/A = unavailable or inactive.</span></p></div><button type="button" class="link-button" data-open-method>Read the scoring method</button></footer>
 
   <dialog id="item-dialog" aria-labelledby="item-dialog-title"><button type="button" class="dialog-close" aria-label="Close item details" data-close-dialog>×</button><div id="item-dialog-content"></div></dialog>
   <dialog id="reference-dialog" aria-labelledby="reference-dialog-title"><button type="button" class="dialog-close" aria-label="Close reference images" data-close-dialog>×</button><h2 id="reference-dialog-title">Style references</h2><label class="reference-select" for="reference-axis">Axis <select id="reference-axis"></select></label><img id="reference-image" alt="Labeled style reference images"><p id="reference-scale" class="muted"></p></dialog>
@@ -169,7 +170,7 @@ Run retrieval to inspect the final candidate query here.</code></pre>
       <li><h3>Rank the combined candidates</h3><p>The final score combines description similarity, the same required graph attributes, and only requested style axes. Relative weights are adjustable; defaults are 55:35:10. Inferred attributes do not contribute to graph filtering or scoring.</p></li>
     </ol>
     <div class="method-note">Unavailable or zero-weight components are omitted and remaining weights are normalized. Candidate counts refer to the combined pool after hard filtering, before the final score threshold. Scores are retrieval signals, not probabilities.</div>
-    <div class="method-baseline"><h3>CLIP baseline</h3><p>For comparison, the raw query is encoded by the CLIP ViT-L/14 text encoder and every item is ranked by exact cosine similarity with its stored CLIP image embedding. The baseline uses no query parsing, hard filters, graph attributes or reranking, so exclusions such as “not white” are not enforced. Its scores are raw cosine values in [−1, 1] and are not comparable with Fashion Search scores.</p></div>
+    <div class="method-baseline"><h3>CLIP baseline</h3><p>For comparison, the raw query is encoded by the CLIP ViT-L/14 text encoder and every item is ranked by exact cosine similarity with its stored CLIP image embedding. The baseline uses no query parsing, hard filters, graph attributes or reranking, so exclusions such as “not white” are not enforced. Its scores are raw cosine values in [−1, 1] and are not comparable with FashioNavi scores.</p></div>
   </dialog>
   <noscript><p class="notice">Enable JavaScript to inspect results and run queries.</p></noscript>
 </body>

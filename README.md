@@ -1,8 +1,10 @@
-# Fashion Search
+# FashioNavi
+
+*Navigating Fashion Retrieval through Knowledge Graphs and Interpretable Style Axes*
 
 ## Web experience
 
-The web UI uses the dataset-independent name **Fashion Search**. Fashion-How is
+The web UI uses the dataset-independent name **FashioNavi**. Fashion-How is
 temporary development data; the intended research demo dataset is **Fashion200K**.
 Dataset names belong in experiment documentation and provenance rather than the
 main interface. The initial preview displays saved images listed in `sample_ids.json`, without querying Neo4j. Search results use the same local image catalog. Catalog preview labels distinguish unranked browsing from
@@ -267,7 +269,7 @@ python scripts\render_search_flow.py
 ## CLIP baseline
 
 For research comparison, each search also runs a plain CLIP baseline. It appears above
-the Fashion Search results but stays collapsed so it is not mistaken for them: a
+the FashioNavi results but stays collapsed so it is not mistaken for them: a
 **Show CLIP results** button opens it, and every new search collapses it again. It
 usually returns first, so while the main search runs a note says its results can be
 checked in the meantime; when the main results arrive the page scrolls to them (after
@@ -294,7 +296,7 @@ The baseline scans all items rather than the binary-quantized `item_image_embedd
 ANN index, so results are exact (about 1 s for 5,000 items on Aura). It is served by
 `POST /api/baseline` with `{"query", "limit"}`, needs only the Neo4j settings (not
 OpenAI), and is requested in parallel with the main search. Items that
-also appear in the Fashion Search results are marked, and the run export includes the
+also appear in the FashioNavi results are marked, and the run export includes the
 baseline list. The server downloads and loads the model in the background at startup.
 
 Required `Item` properties:
