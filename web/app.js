@@ -6,7 +6,7 @@ const score = (value) => typeof value === "number" && Number.isFinite(value) ? v
 const componentScore = (item, name) => item.score_components?.includes(name) ? score(item[`${name}_score`]) : "N/A";
 const percentage = (value) => typeof value === "number" && Number.isFinite(value) ? Math.min(100, Math.max(0, value * 100)) : 0;
 const label = (value) => String(value || "").replaceAll("_", " ");
-// The CLIP baseline starts collapsed for every search so it is not mistaken for Fashion Search results.
+// The CLIP baseline starts collapsed for every search so it is not mistaken for FashioNavi results.
 const state = { config: null, preview: [], run: null, view: "grid", busy: false, lastAttemptFailed: false, attempt: 0, runAttempt: null, baseline: null, baselineOpen: false, revealPending: false };
 state.references = null;
 const weightControls = { text: "weight-text", graph: "weight-graph", style: "weight-style" };
@@ -115,7 +115,7 @@ function applyView() {
   }
 }
 
-// Fashion Search ranks by item ID, only when both lists come from the same submission.
+// FashioNavi ranks by item ID, only when both lists come from the same submission.
 function sharedRanks() {
   if (!state.run || state.runAttempt !== state.baseline?.attempt) return null;
   return new Map(state.run.items.map((item, index) => [item.id, index + 1]));
@@ -176,19 +176,19 @@ function renderBaselineOverlap() {
   const shared = ours ? items.filter((item) => ours.has(item.id)).length : 0;
   const searching = state.busy && state.attempt === baseline.attempt;
   $("baseline-hint").textContent = baseline.status === "loading"
-    ? `Scoring every catalog image with CLIP.${searching ? " You can open its results while Fashion Search runs." : ""}`
-    : data && searching ? "Fashion Search is still running. Meanwhile, you can check the CLIP baseline results."
-    : data ? `A separate CLIP comparison, not the Fashion Search results below.${ours ? ` ${shared} of ${items.length} also appear in them.` : ""}` : "";
+    ? `Scoring every catalog image with CLIP.${searching ? " You can open its results while FashioNavi runs." : ""}`
+    : data && searching ? "FashioNavi is still running. Meanwhile, you can check the CLIP baseline results."
+    : data ? `A separate CLIP comparison, not the FashioNavi results below.${ours ? ` ${shared} of ${items.length} also appear in them.` : ""}` : "";
   $("baseline-hint").hidden = !$("baseline-hint").textContent;
   $("baseline-caption").textContent = baseline.status === "loading" ? "Encoding the query with CLIP and scoring every catalog image..."
-    : data ? `${items.length} items by cosine similarity · “${data.query}”${ours ? ` · ${shared} of ${items.length} also in Fashion Search results` : ""}` : "";
+    : data ? `${items.length} items by cosine similarity · “${data.query}”${ours ? ` · ${shared} of ${items.length} also in FashioNavi results` : ""}` : "";
   $("baseline-caption").hidden = !$("baseline-caption").textContent;
   $("baseline-grid").querySelectorAll("[data-baseline-item]").forEach((card) => {
     const oursRank = ours?.get(items[Number(card.dataset.baselineItem)]?.id);
     card.classList.toggle("shared", Boolean(oursRank));
-    card.querySelector(".card-subtitle").textContent = oursRank ? `Also #${oursRank} in Fashion Search` : ours ? "Not in Fashion Search results" : "CLIP image match";
+    card.querySelector(".card-subtitle").textContent = oursRank ? `Also #${oursRank} in FashioNavi` : ours ? "Not in FashioNavi results" : "CLIP image match";
   });
-  $("baseline-table").innerHTML = items.length ? `<table><caption class="sr-only">CLIP baseline cosine scores</caption><thead><tr><th scope="col">Rank</th><th scope="col">Item</th><th scope="col">Type</th><th scope="col">Cosine</th><th scope="col">Fashion Search rank</th></tr></thead><tbody>${items.map((item, index) => `<tr><td>${index + 1}</td><td><button type="button" data-baseline-item="${index}" aria-label="Inspect ${escapeHTML(item.id)}">${escapeHTML(item.id)}</button></td><td>${escapeHTML(item.type_name || item.type_code || "Garment")}</td><td><strong>${score(item.score)}</strong></td><td>${ours?.get(item.id) ?? (ours ? "-" : "N/A")}</td></tr>`).join("")}</tbody></table>` : "";
+  $("baseline-table").innerHTML = items.length ? `<table><caption class="sr-only">CLIP baseline cosine scores</caption><thead><tr><th scope="col">Rank</th><th scope="col">Item</th><th scope="col">Type</th><th scope="col">Cosine</th><th scope="col">FashioNavi rank</th></tr></thead><tbody>${items.map((item, index) => `<tr><td>${index + 1}</td><td><button type="button" data-baseline-item="${index}" aria-label="Inspect ${escapeHTML(item.id)}">${escapeHTML(item.id)}</button></td><td>${escapeHTML(item.type_name || item.type_code || "Garment")}</td><td><strong>${score(item.score)}</strong></td><td>${ours?.get(item.id) ?? (ours ? "-" : "N/A")}</td></tr>`).join("")}</tbody></table>` : "";
   applyView();
 }
 
@@ -386,7 +386,7 @@ function openBaselineItem(index) {
   $("item-dialog-content").innerHTML = `<div class="dialog-layout"><div>${imageMarkup(item, "dialog-image")}</div><div class="dialog-copy"><p class="eyebrow">BASELINE RANK ${String(index + 1).padStart(2, "0")} / CLIP</p><h2 id="item-dialog-title">${escapeHTML(item.type_name || item.type_code || "Garment")}</h2><p>${escapeHTML(item.id)}</p>
     <div class="score-breakdown"><div class="score-row"><span>Cosine</span><span></span><strong>${score(item.score)}</strong></div></div>
     <p class="dialog-note">Cosine similarity between the CLIP ViT-L/14 embeddings of the raw query text and this item’s image, from −1 to 1. No parsing, filters or reranking were applied.</p>
-    <h3>Fashion Search</h3><p>${oursRank ? `Also ranked #${oursRank} by Fashion Search for this query.` : ours ? "Not in the Fashion Search results for this query." : "Fashion Search results for this query are not available."}</p>
+    <h3>FashioNavi</h3><p>${oursRank ? `Also ranked #${oursRank} by FashioNavi for this query.` : ours ? "Not in the FashioNavi results for this query." : "FashioNavi results for this query are not available."}</p>
   </div></div>`;
   handleImageErrors($("item-dialog-content"));
   $("item-dialog").showModal();

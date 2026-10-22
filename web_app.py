@@ -1,4 +1,4 @@
-"""Fashion Search web UI and JSON API. Run with `python web_app.py`."""
+"""FashioNavi web UI and JSON API. Run with `python web_app.py`."""
 
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ async def lifespan(_: FastAPI) -> Any:
     yield
 
 
-app = FastAPI(title="Fashion Search API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="FashioNavi API", version="1.0.0", lifespan=lifespan)
 
 
 @app.middleware("http")

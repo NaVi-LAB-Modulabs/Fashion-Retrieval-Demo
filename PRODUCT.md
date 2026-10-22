@@ -14,7 +14,7 @@ Secondary (inferred from the existing UI, not the design target): the research t
 
 ## Product Purpose
 
-Fashion Search turns a natural-language clothing request into ranked garment images from a fashion knowledge graph. Success is felt search quality: a visitor writes a request in plain words and immediately sees clothes that match it, including exclusions ("not white"), named attributes, and style feel.
+FashioNavi turns a natural-language clothing request into ranked garment images from a fashion knowledge graph. Success is felt search quality: a visitor writes a request in plain words and immediately sees clothes that match it, including exclusions ("not white"), named attributes, and style feel.
 
 ## Positioning
 
@@ -30,7 +30,7 @@ Unlike pure embedding search, a request is parsed into hard constraints (categor
 
 - Natural-language query parsing extracts category, positive, excluded and directly named attributes, a visual description, and style-axis targets.
 - Ranking evidence is available for every result: component scores, mapped attributes, the generated Cypher (embedding parameters redacted), stage timings, and a JSON run export. For external users this evidence is **secondary**. Results come first, and evidence stays available on demand without dominating the screen.
-- A CLIP ViT-L/14 text-to-image baseline (raw query vs. image embeddings, no filters) is shown above the results for research comparison, with shared items marked. It stays collapsed behind a button so it is not mistaken for the Fashion Search results; because it returns first, a note invites visitors to open it while the main search runs, and the page then scrolls to the main results. It runs on the server with an ONNX export of the CLIP text encoder (no PyTorch) that is downloaded from Hugging Face on first use, so it works on Vercel without a build step.
+- A CLIP ViT-L/14 text-to-image baseline (raw query vs. image embeddings, no filters) is shown above the results for research comparison, with shared items marked. It stays collapsed behind a button so it is not mistaken for the FashioNavi results; because it returns first, a note invites visitors to open it while the main search runs, and the page then scrolls to the main results. It runs on the server with an ONNX export of the CLIP text encoder (no PyTorch) that is downloaded from Hugging Face on first use, so it works on Vercel without a build step.
 - Adjustable settings: parser and threshold controls, "Min. attribute match", and scoring weights (default 55:35:10 for description, graph attributes and style).
 - Images are served only from the local `public/images/` catalog (CDN on Vercel) (5,000 IDs across five categories, listed in `sample_ids.json`). Missing images show a placeholder.
 - Current stack: FastAPI serving static HTML/CSS/JS with no frontend build. This is the current state, not a binding constraint; a framework may be introduced if needed.
@@ -38,7 +38,8 @@ Unlike pure embedding search, a request is parsed into hard constraints (categor
 
 ## Brand Commitments
 
-- Product name is **Fashion Search**. It is dataset-independent.
+- Product name is **FashioNavi**. It is dataset-independent.
+- Full name: *FashioNavi: Navigating Fashion Retrieval through Knowledge Graphs and Interpretable Style Axes*. It is long, so it appears only in low-emphasis places (footer, page description, README), never as a headline.
 - Dataset names (Fashion200K, Fashion-How) must not appear in the main interface as product identity. They belong in experiment documentation and provenance only.
 
 ## Evidence on Hand
