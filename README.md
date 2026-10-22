@@ -183,9 +183,10 @@ they contain query text and saved search results.
 
 ## Fashion200K sample images
 
-`sample_ids.json` lists 5,000 Fashion200K IDs across five categories. All 5,000
-corresponding images are stored as `public/images/<id>.jpg` (about 86 MB); no image
-download or extraction script is needed.
+`sample_ids.json` lists 15,000 Fashion200K IDs across five categories (3,000 per
+category). All corresponding images are stored as `public/images/<id>.jpg`
+(about 262 MB), including the 10,000 added images extracted from the cached
+Hugging Face dataset. No runtime image download is needed.
 
 Image URLs are built from `sample_ids.json`, not from the filesystem, because the
 deployed function does not contain `public/`. Locally the web app and `preview.py`
