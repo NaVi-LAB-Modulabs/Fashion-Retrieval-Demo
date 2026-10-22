@@ -44,6 +44,11 @@ def model_asset(kind: str) -> Path:
     filename, algorithm, expected = ASSETS[kind]
     directory = Path(os.getenv("FASHION_CLIP_MODEL_DIR") or
                      Path(tempfile.gettempdir()) / "fashion-clip-onnx" / MODEL_REVISION)
+    return hub_file(MODEL_REPO, MODEL_REVISION, filename, algorithm, expected, directory)
+
+
+def hub_file(repo: str, revision: str, filename: str, algorithm: str, expected: str, directory: Path) -> Path:
+    """Download one pinned Hugging Face file once and verify it before use."""
     path = directory / Path(filename).name
     with _asset_lock:
         if path.is_file() and file_digest(path, algorithm) == expected:
@@ -54,7 +59,7 @@ def model_asset(kind: str) -> Path:
         try:
             with tempfile.NamedTemporaryFile(dir=directory, delete=False) as stream:
                 temporary = Path(stream.name)
-                url = f"https://huggingface.co/{MODEL_REPO}/resolve/{MODEL_REVISION}/{filename}"
+                url = f"https://huggingface.co/{repo}/resolve/{revision}/{filename}"
                 with httpx.stream("GET", url, follow_redirects=True,
                                   timeout=httpx.Timeout(120, connect=15)) as response:
                     response.raise_for_status()

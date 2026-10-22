@@ -42,28 +42,17 @@ python -m venv .venv
 Open `http://127.0.0.1:7860`. Configure the variables below in a root `.env` file
 or the server environment to enable live search. Credentials stay on the server.
 
-The [CLIP baseline](#clip-baseline) also needs `models/clip_text_fp16w.onnx` (about
-250 MB, not in git). Fetch the published file, or export it yourself (this pulls in
-PyTorch and the 1.7 GB source model, only for the export):
-
-```cmd
-set CLIP_TEXT_MODEL_URL=<model download URL>
-set CLIP_TEXT_MODEL_SHA256=<its sha256>
-.venv\Scripts\python.exe scripts\fetch_clip_text_model.py
-
-rem or
-.venv\Scripts\python.exe -m pip install -r requirements-export.txt
-.venv\Scripts\python.exe scripts\export_clip_text_onnx.py
-```
+The [CLIP baseline](#clip-baseline) needs only the Neo4j settings. The server
+downloads its text encoder from Hugging Face on first use.
 The status indicator reports configuration presence, not verified connectivity.
 No local GPU is required by the web retrieval path.
 
 ### CLIP ONNX comparison
 
 Choose **Retrieval: CLIP ONNX** to search the packaged 5,000-image catalog using
-OpenAI CLIP ViT-B/32 on CPU, without OpenAI/Neo4j credentials or PyTorch. In
-Hybrid mode, **Compare CLIP** adds both same-candidate reranking and full-catalog
-CLIP results. The **Ranking** selector switches methods; scores are raw CLIP
+OpenAI CLIP ViT-B/32 on CPU, without OpenAI/Neo4j credentials or PyTorch. Hybrid
+search can also return same-candidate reranking and full-catalog CLIP results
+through the API (`compare_clip`); the UI does not show them. Scores are raw CLIP
 cosines, not hybrid weighted scores. First use downloads a pinned text ONNX
 model and tokenizer to temporary storage. See [model provenance, algorithms,
 API requests and Recall@K evaluation](docs/clip-onnx-comparison.md).
@@ -95,11 +84,10 @@ are listed in `sample_ids.json`. Missing images display a placeholder.
 Review the function duration available to the project before a live demo: parser
 and embedding calls can take time, especially when provider retries are needed.
 
-To enable the CLIP baseline on Vercel, set `CLIP_TEXT_MODEL_URL` and
-`CLIP_TEXT_MODEL_SHA256` (plus `CLIP_TEXT_MODEL_TOKEN` for a private URL). The build
-step in `pyproject.toml` (`scripts/fetch_clip_text_model.py`) downloads and verifies
-the model into the function bundle; a checksum mismatch fails the build. Without the
-URL the build still succeeds and the page shows the baseline as not enabled.
+The CLIP baseline needs no extra variables or build step on Vercel. Each instance
+downloads the pinned ViT-L/14 text encoder (248 MB) and tokenizer from Hugging Face
+into its temporary directory on first use, so allow outbound HTTPS to Hugging Face
+and expect a slower first baseline after a cold start.
 
 Vercel configuration follows the [official FastAPI deployment guide](https://vercel.com/docs/frameworks/backend/fastapi).
 
@@ -131,10 +119,6 @@ Optional:
 NEO4J_DATABASE
 OPENAI_MODEL
 OPENAI_EMBEDDING_MODEL
-CLIP_TEXT_MODEL_URL       # build/fetch: CLIP baseline model download URL
-CLIP_TEXT_MODEL_SHA256    # required with CLIP_TEXT_MODEL_URL
-CLIP_TEXT_MODEL_TOKEN     # bearer token for a private model URL
-CLIP_TEXT_MODEL_PATH      # runtime: model location (default models/clip_text_fp16w.onnx)
 FASHION_CACHE_ENABLED
 FASHION_CACHE_PATH
 FASHION_CACHE_TTL_SECONDS
@@ -217,16 +201,12 @@ evidence and show an image placeholder. Commit `sample_ids.json` and the
 |-- preview.py                     # dependency-free UI preview (local images)
 |-- web/                           # HTML, CSS, JavaScript and favicon
 |-- requirements.txt              # application dependencies for local install
-|-- requirements-export.txt       # PyTorch tools for exporting the CLIP text model
-|-- pyproject.toml                 # dependencies, Vercel entrypoint and build step
+|-- pyproject.toml                 # dependencies and Vercel entrypoint
 |-- vercel.json                    # FastAPI preset; keeps public/ out of the function
 |-- tests/                         # offline service and preview tests
 |-- sample_ids.json               # allowed Fashion200K image IDs
 |-- public/images/                # saved Fashion200K images (CDN on Vercel)
-|-- models/                       # CLIP tokenizer; the ONNX model is fetched, not committed
 |-- scripts/
-|   |-- export_clip_text_onnx.py  # torch model -> models/clip_text_fp16w.onnx
-|   `-- fetch_clip_text_model.py  # download + checksum (Vercel build step)
 `-- src/
     `-- fashion_how_graphdb/
         |-- web_service.py         # retrieval API adapter and image catalog
@@ -286,10 +266,12 @@ python scripts\render_search_flow.py
 
 ## CLIP baseline
 
-For research comparison, each search also runs a plain CLIP baseline and shows it
-above the Fashion Search results. It usually returns first, so it can be read while the
-main search runs; when the main results arrive the page scrolls to them (after any
-open item dialog closes). The raw query text (not the parsed description) is
+For research comparison, each search also runs a plain CLIP baseline. It appears above
+the Fashion Search results but stays collapsed so it is not mistaken for them: a
+**Show CLIP results** button opens it, and every new search collapses it again. It
+usually returns first, so while the main search runs a note says its results can be
+checked in the meantime; when the main results arrive the page scrolls to them (after
+any open item dialog closes). The raw query text (not the parsed description) is
 encoded by the CLIP ViT-L/14 text encoder and every `Item` is ranked by exact cosine
 similarity with its stored `image_embedding`. There is no query parsing, hard filtering, graph scoring or
 reranking, so exclusions such as "not white" are not enforced. Scores are raw cosine
@@ -297,21 +279,23 @@ values in [-1, 1]: Neo4j's `vector.similarity.cosine` returns `(1 + cosine) / 2`
 query rescales it. The CLIP tokenizer truncates queries beyond 77 tokens.
 
 The image vectors came from the `sentence-transformers` model `clip-ViT-L-14` (fp32,
-normalized). At runtime the query uses that model's text tower exported to ONNX
-(`models/clip_text_fp16w.onnx`: weights stored as fp16, arithmetic in fp32) with
-`onnxruntime` and the standalone `tokenizers` package, so PyTorch is not needed and
-the model fits Vercel's function size limit. Against the torch fp32 model on 55 test
-queries (including long, non-English and emoji input), query embeddings agree at
-cosine >= 0.9999998, top-12 result sets were identical, and individual scores moved by
-at most 0.00003 (one near-tie at ranks 11 and 12 swapped). The export script repeats
-this check and fails below 0.9999.
+normalized). The query uses the same OpenAI ViT-L/14 text tower as an fp16 ONNX export
+on Hugging Face ([`Xenova/clip-vit-large-patch14`](https://huggingface.co/Xenova/clip-vit-large-patch14),
+pinned revision and checksums in `baseline.py`), run with `onnxruntime` and the
+standalone `tokenizers` package, so PyTorch is not needed and no model file is
+deployed. Like the CLIP ONNX comparison, the server downloads it on first use and
+verifies it before loading. Against the fp32 model its query embeddings agree at
+cosine 1.0000, and on 8 test queries (including non-English and emoji input) the
+top-12 baseline results from Neo4j were identical to those of the earlier self-exported
+model, with scores within 0.00004. The int8 export in the same repository is not
+used: its query embeddings drift to cosine 0.83-0.91.
 
 The baseline scans all items rather than the binary-quantized `item_image_embedding`
 ANN index, so results are exact (about 1 s for 5,000 items on Aura). It is served by
-`POST /api/baseline` with `{"query", "limit"}`, needs only the Neo4j settings and the
-model file (not OpenAI), and is requested in parallel with the main search. Items that
+`POST /api/baseline` with `{"query", "limit"}`, needs only the Neo4j settings (not
+OpenAI), and is requested in parallel with the main search. Items that
 also appear in the Fashion Search results are marked, and the run export includes the
-baseline list. The server loads the model in the background at startup.
+baseline list. The server downloads and loads the model in the background at startup.
 
 Required `Item` properties:
 
@@ -326,8 +310,8 @@ image_embedding_model    # clip-ViT-L-14
 
 The web UI now offers **Image references** and **Legacy** target modes. Image
 references sends the existing labeled calibration garments to the model at
-query time. Compare legacy reranks the identical candidate pool with both
-target sets, with reference images, confidence and target changes in the
+query time. The API's `compare_styles` reranks the identical candidate pool with both
+target sets (the UI does not show this comparison), with reference images, confidence and target changes in the
 inspector. Stored item axes and retrieval weights remain unchanged. The API
 defaults to legacy for compatibility. See
 [the experiment notes](docs/reference-style-experiment.md) for provenance,

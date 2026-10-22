@@ -1,4 +1,4 @@
-"""Check real ONNX retrieval and recorded hybrid comparisons on desktop/mobile."""
+"""Check real ONNX retrieval and a recorded hybrid search on desktop/mobile."""
 
 import argparse
 import json
@@ -54,27 +54,20 @@ def main():
                 route.fulfill(json={**route.fetch().json(), "ready": True})
             page.route("**/api/config", ready_config)
             def recorded_search(route):
-                assert route.request.post_data_json["compare_clip"] is True
+                assert "compare_clip" not in route.request.post_data_json
                 route.fulfill(json=comparison)
             page.route("**/api/search", recorded_search)
             page.reload(wait_until="domcontentloaded")
             page.wait_for_function("document.querySelector('#runtime-label').textContent.includes('Live search')")
-            page.locator("#compare-clip").check()
             page.locator("#query").fill(comparison["query"])
             page.locator("#search-button").click()
-            page.wait_for_function("!document.querySelector('#ranking-method-label').hidden")
-            for method in ["same_candidates", "catalog", "hybrid"]:
-                page.locator("#ranking-method").select_option(method)
-                expected = comparison["items"] if method == "hybrid" else comparison["clip_comparisons"][method]["items"]
-                assert page.locator(".item-card .card-id").all_text_contents() == [item["id"] for item in expected]
-                assert page.locator("#query-plan").is_visible() == (method == "hybrid")
-                assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
-            page.locator("#legacy-results").click()
-            assert page.locator(".item-card .card-id").all_text_contents() == [item["id"] for item in comparison["comparison"]["items"]]
-            page.locator("#ranking-method").select_option("catalog")
-            page.screenshot(path=str(args.output_dir / f"{name}-comparison.png"), full_page=True, animations="disabled")
+            page.wait_for_function("document.querySelector('#results-eyebrow').textContent === 'RANKED RESULTS'")
+            assert page.locator("#results-grid .card-id").all_text_contents() == [item["id"] for item in comparison["items"]]
+            assert page.locator("#query-plan").is_visible()
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+            page.screenshot(path=str(args.output_dir / f"{name}-hybrid.png"), full_page=True, animations="disabled")
             assert not errors, errors
-            print(f"{name}: real CLIP, independent readiness, comparisons, scores, export, images and layout passed")
+            print(f"{name}: real CLIP, independent readiness, hybrid results, scores, export, images and layout passed")
             page.close()
         browser.close()
 

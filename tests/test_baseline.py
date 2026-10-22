@@ -1,17 +1,14 @@
 """Offline checks for the CLIP text-to-image baseline."""
 
-from contextlib import ExitStack, redirect_stderr, redirect_stdout
-import hashlib
-import io
-import importlib.util
+from contextlib import ExitStack
 import os
 from pathlib import Path
 import sys
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from tempfile import TemporaryDirectory
-from threading import Thread
+from types import SimpleNamespace
 import unittest
 from unittest.mock import MagicMock, patch
+
+import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -86,12 +83,40 @@ class BaselineRetrievalTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 service.retrieve_baseline({"query": "blue shirt"})
 
-    def test_encoder_is_unavailable_without_the_model_file(self):
-        with patch.object(baseline, "TEXT_MODEL_PATH", ROOT / "models" / "missing.onnx"):
-            self.assertFalse(baseline.encoder_available())
+    def test_encoder_is_downloaded_from_the_pinned_hugging_face_revision(self):
+        files = []
+        def hub_file(repo, revision, filename, algorithm, expected, directory):
+            files.append((repo, revision, filename, algorithm, expected))
+            return Path(directory) / Path(filename).name
+        baseline._load_encoder.cache_clear()
+        self.addCleanup(baseline._load_encoder.cache_clear)
+        with patch.object(baseline.clip_onnx, "hub_file", side_effect=hub_file), \
+             patch.object(baseline, "ClipTextEncoder") as encoder:
+            baseline.clip_encoder()
+        self.assertEqual(files, [
+            ("Xenova/clip-vit-large-patch14", baseline.TEXT_MODEL_REVISION, "onnx/text_model_fp16.onnx",
+             "sha256", baseline.TEXT_MODEL_FILES["model"][2]),
+            ("Xenova/clip-vit-large-patch14", baseline.TEXT_MODEL_REVISION, "tokenizer.json",
+             "git", baseline.TEXT_MODEL_FILES["tokenizer"][2]),
+        ])
+        model_path, tokenizer_path = encoder.call_args.args
+        self.assertEqual(model_path.parent.name, baseline.TEXT_MODEL_REVISION)
+        self.assertEqual(tokenizer_path.parent, model_path.parent)
+
+    def test_encoder_feeds_only_declared_inputs_and_normalizes_fp16_output(self):
+        feeds = []
+        encoder = baseline.ClipTextEncoder.__new__(baseline.ClipTextEncoder)
+        encoder.tokenizer = SimpleNamespace(encode=lambda text: SimpleNamespace(ids=[49406, 12, 49407]))
+        encoder.session = SimpleNamespace(
+            get_inputs=lambda: [SimpleNamespace(name="input_ids")],
+            run=lambda outputs, feed: feeds.append(feed) or [np.asarray([[3, 4]], dtype=np.float16)],
+        )
+        np.testing.assert_allclose(encoder.encode("blue"), [0.6, 0.8], rtol=1e-6)
+        self.assertEqual(set(feeds[0]), {"input_ids"})
 
 
-@unittest.skipUnless(baseline.encoder_available(), "models/clip_text_fp16w.onnx not exported or fetched")
+@unittest.skipUnless(os.getenv("FASHION_CLIP_DOWNLOAD_TESTS") == "1",
+                     "set FASHION_CLIP_DOWNLOAD_TESTS=1 to download the 248 MB CLIP text model")
 class OnnxEncoderTests(unittest.TestCase):
     def test_query_embedding_is_normalized_and_handles_long_queries(self):
         encoder = baseline.clip_encoder()
@@ -101,86 +126,6 @@ class OnnxEncoderTests(unittest.TestCase):
                 self.assertEqual(len(vector), 768)
                 self.assertAlmostEqual(sum(value * value for value in vector), 1.0, places=5)
         self.assertEqual(encoder.encode("red dress"), encoder.encode("red dress"))
-
-
-def load_fetch_script():
-    spec = importlib.util.spec_from_file_location("fetch_clip_text_model", ROOT / "scripts" / "fetch_clip_text_model.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-class FetchModelScriptTests(unittest.TestCase):
-    def setUp(self):
-        self.fetch = load_fetch_script()
-        self.directory = TemporaryDirectory()
-        self.source = Path(self.directory.name) / "source.onnx"
-        self.source.write_bytes(b"model bytes")
-        self.target = Path(self.directory.name) / "models" / "clip_text_fp16w.onnx"
-        self.digest = hashlib.sha256(b"model bytes").hexdigest()
-
-    def tearDown(self):
-        self.directory.cleanup()
-
-    def run_main(self, **env):
-        with patch.object(self.fetch, "TARGET", self.target), patch.dict(os.environ, env, clear=False), \
-             redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
-            for name in ("CLIP_TEXT_MODEL_URL", "CLIP_TEXT_MODEL_SHA256"):
-                if name not in env:
-                    os.environ.pop(name, None)
-            return self.fetch.main()
-
-    def test_without_url_the_build_continues_with_the_baseline_off(self):
-        self.assertEqual(self.run_main(), 0)
-        self.assertFalse(self.target.exists())
-
-    def test_download_is_verified_before_it_is_installed(self):
-        self.assertEqual(self.run_main(CLIP_TEXT_MODEL_URL=self.source.as_uri(), CLIP_TEXT_MODEL_SHA256=self.digest), 0)
-        self.assertEqual(self.target.read_bytes(), b"model bytes")
-
-    def test_checksum_mismatch_or_missing_checksum_fails_the_build(self):
-        self.assertEqual(self.run_main(CLIP_TEXT_MODEL_URL=self.source.as_uri(), CLIP_TEXT_MODEL_SHA256="0" * 64), 1)
-        self.assertEqual(self.run_main(CLIP_TEXT_MODEL_URL=self.source.as_uri()), 1)
-        self.assertFalse(self.target.exists())
-        self.assertEqual(list(self.target.parent.glob("*.part")) if self.target.parent.exists() else [], [])
-
-    def test_token_is_not_forwarded_to_a_redirected_host(self):
-        seen = {}
-
-        def server(handler):
-            httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
-            Thread(target=httpd.serve_forever, daemon=True).start()
-            self.addCleanup(httpd.server_close)
-            self.addCleanup(httpd.shutdown)
-            return httpd.server_port
-
-        class CDN(BaseHTTPRequestHandler):
-            def do_GET(self):
-                seen["cdn"] = self.headers.get("Authorization")
-                self.send_response(200)
-                self.end_headers()
-                self.wfile.write(b"model bytes")
-
-            def log_message(self, *args):
-                pass
-
-        cdn_port = server(CDN)
-
-        class Hub(BaseHTTPRequestHandler):
-            def do_GET(self):
-                seen["hub"] = self.headers.get("Authorization")
-                self.send_response(302)
-                # "localhost" vs "127.0.0.1": a different host, like a hub redirecting to its CDN.
-                self.send_header("Location", f"http://localhost:{cdn_port}/signed")
-                self.end_headers()
-
-            def log_message(self, *args):
-                pass
-
-        hub_port = server(Hub)
-        self.fetch.fetch(f"http://127.0.0.1:{hub_port}/model.onnx", self.digest, self.target, token="secret")
-        self.assertEqual(seen, {"hub": "Bearer secret", "cdn": None})
-        self.assertEqual(self.target.read_bytes(), b"model bytes")
 
 
 try:
