@@ -280,8 +280,8 @@ def extraction_schema() -> dict[str, Any]:
 def extraction_prompt(query: str) -> str:
     return json.dumps(
         {
-            "query": query,
             "catalog": search_catalog(),
+            "query": query,
         },
         ensure_ascii=False,
         indent=2,
