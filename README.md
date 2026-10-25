@@ -2,13 +2,42 @@
 
 *Navigating Fashion Retrieval through Knowledge Graphs and Interpretable Style Axes*
 
-## Web experience
+**Live demo:** <https://fashion-retrieval-demo.vercel.app/>
 
-The web UI uses the dataset-independent name **FashioNavi**. Fashion-How is
-temporary development data; the intended research demo dataset is **Fashion200K**.
-Dataset names belong in experiment documentation and provenance rather than the
-main interface. The initial preview displays saved images listed in `sample_ids.json`, without querying Neo4j. Search results use the same local image catalog. Catalog preview labels distinguish unranked browsing from
-actual search results, without presenting a dataset as the product name.
+FashioNavi is a research prototype for explainable natural-language fashion
+retrieval. It combines LLM-based query parsing, knowledge-graph filtering,
+description-vector retrieval, and interpretable style-axis reranking. The demo is
+intended for information-retrieval researchers and practitioners who want to
+inspect not only the ranked garments, but also the constraints, candidates,
+component scores, Cypher query, and timings that produced the ranking.
+
+## Demo overview
+
+Enter a request such as “a casual blue shirt, not white, for daily wear.” The
+system extracts positive and excluded constraints, retrieves candidates from a
+Fashion200K knowledge graph, and presents ranked garments with an explanation of
+each retrieval stage.
+
+The live demo provides:
+
+- natural-language search with positive and excluded constraints;
+- graph and description-vector candidate retrieval;
+- interpretable style-axis targets and weighted reranking;
+- per-item component scores and mapped attributes;
+- generated Cypher, redacted parameters, and measured stage timings;
+- downloadable JSON run data; and
+- two clearly separated CLIP comparisons described below.
+
+The initial gallery is an **unranked catalog preview**. It does not contain
+invented scores or attributes, and it should not be interpreted as a search
+result. Live results are always returned by the retrieval service.
+
+## System interface
+
+The web UI uses the dataset-independent name **FashioNavi**. The current research
+demo uses **Fashion200K**; the dataset name is retained in experiment and
+provenance documentation rather than used as the product identity. The initial
+preview displays images listed in `sample_ids.json` without querying Neo4j.
 
 The web UI is laid out like a shopping search page: a large search bar with
 collapsible settings at the top, then ranked product results beside an extracted-constraints
@@ -19,19 +48,10 @@ include component scores; a table and item details provide more ranking evidence
 Raw parser/parameter JSON and run export remain available for inspection.
 Before a search, analysis panes show empty states rather than fabricated examples.
 
-It uses HTML, CSS and JavaScript served by FastAPI; no Node.js
-or frontend build is required. The application entrypoint is `web_app.py`.
+The interface is plain HTML, CSS, and JavaScript served by FastAPI; no Node.js or
+frontend build is required. The application entry point is `web_app.py`.
 
-Features include responsive image cards, an optional ranking table, natural
-language examples, parser/threshold controls, extracted and excluded constraints,
-style-axis targets, a collapsed scoring-weight control, per-item score breakdowns
-and mapped attributes, the final
-candidate Cypher with redacted embedding parameters, measured stage timings, and
-downloadable JSON search runs.
-The initial gallery is explicitly an **unranked catalog preview**, with no invented
-scores or attributes. Live results always come from the existing retrieval code.
-
-### Run the web UI
+## Run locally
 
 Use Python 3.11–3.13 and Windows Command Prompt:
 
@@ -44,12 +64,22 @@ python -m venv .venv
 Open `http://127.0.0.1:7860`. Configure the variables below in a root `.env` file
 or the server environment to enable live search. Credentials stay on the server.
 
-The [CLIP baseline](#clip-baseline) needs only the Neo4j settings. The server
-downloads its text encoder from Hugging Face on first use.
 The status indicator reports configuration presence, not verified connectivity.
 No local GPU is required by the web retrieval path.
 
-### CLIP ONNX comparison
+### Credential-free preview
+
+To inspect the interface without installing packages or calling external
+services:
+
+```cmd
+python preview.py
+```
+
+This starts the same UI on port 7860 with live search explicitly disabled. Stop
+it with Ctrl+C before starting `web_app.py` on the same port.
+
+### Standalone CLIP ONNX search
 
 Choose **Retrieval: CLIP ONNX** to search the packaged 5,000-image catalog using
 OpenAI CLIP ViT-B/32 on CPU, without OpenAI/Neo4j credentials or PyTorch. Hybrid
@@ -59,16 +89,7 @@ cosines, not hybrid weighted scores. First use downloads a pinned text ONNX
 model and tokenizer to temporary storage. See [model provenance, algorithms,
 API requests and Recall@K evaluation](docs/clip-onnx-comparison.md).
 
-To view the design without installing packages or calling external services:
-
-```cmd
-python preview.py
-```
-
-This uses the same UI and local images on port 7860, with live search explicitly
-disabled. Stop it with Ctrl+C before starting `web_app.py` on the same port.
-
-### Deploy the web UI to Vercel
+## Deploy to Vercel
 
 Import this repository into Vercel and select the **FastAPI** framework preset.
 `pyproject.toml` specifies `web_app:app` as the entrypoint and lists the application
@@ -86,14 +107,16 @@ are listed in `sample_ids.json`. Missing images display a placeholder.
 Review the function duration available to the project before a live demo: parser
 and embedding calls can take time, especially when provider retries are needed.
 
-The CLIP baseline needs no extra variables or build step on Vercel. Each instance
-downloads the pinned ViT-L/14 text encoder (248 MB) and tokenizer from Hugging Face
-into its temporary directory on first use, so allow outbound HTTPS to Hugging Face
-and expect a slower first baseline after a cold start.
+The graph-backed [ViT-L/14 baseline](#graph-backed-clip-vit-l14-baseline) needs
+Neo4j credentials but not an OpenAI API key. Each instance downloads its pinned
+248 MB text encoder and tokenizer from Hugging Face into temporary storage on
+first use. Allow outbound HTTPS to Hugging Face and expect a slower first request
+after a cold start. This baseline is distinct from the packaged 5,000-image
+ViT-B/32 ONNX search, which does not use Neo4j.
 
 Vercel configuration follows the [official FastAPI deployment guide](https://vercel.com/docs/frameworks/backend/fastapi).
 
-### Verification
+## Verification
 
 ```cmd
 python -m unittest discover -s tests -v
@@ -102,6 +125,21 @@ python -m unittest discover -s tests -v
 The service tests use provider doubles to verify real Cypher generation,
 reranking, thresholds, safe response fields and preview semantics without API
 charges. They do not establish connectivity to a deployed database or provider.
+
+The ONNX download test is skipped unless `FASHION_CLIP_DOWNLOAD_TESTS=1` is set;
+it downloads the 248 MB model.
+
+## Operational limitations
+
+- Full FashioNavi search requires both OpenAI and Neo4j credentials; the
+  standalone ViT-B/32 CLIP mode requires neither.
+- The graph dataset and its stored embeddings must already exist. Graph creation
+  and attribute extraction are outside this repository.
+- Serverless cold starts can require a model download and do not preserve the
+  default SQLite cache across instances or redeployments.
+- CLIP scores are comparison signals, not calibrated relevance probabilities.
+- The included offline tests validate service behavior with provider doubles;
+  they do not replace a live connectivity or retrieval-quality evaluation.
 
 ## Environment variables
 
@@ -181,12 +219,21 @@ backend to preserve the first answer globally. The current SQLite implementation
 coordinates only workers sharing the same file. Do not upload local caches;
 they contain query text and saved search results.
 
-## Fashion200K sample images
+## Data provenance and usage
 
 `sample_ids.json` lists 15,000 Fashion200K IDs across five categories (3,000 per
 category). All corresponding images are stored as `public/images/<id>.jpg`
 (about 262 MB), including the 10,000 added images extracted from the cached
 Hugging Face dataset. No runtime image download is needed.
+
+The images and identifiers originate from the
+[`Marqo/fashion200k`](https://huggingface.co/datasets/Marqo/fashion200k)
+distribution of Fashion200K. Its dataset card identifies the distribution as
+Apache-2.0, states that Marqo does not own the original dataset, and asks users to
+cite the original work. Users who redistribute or publicly deploy the included
+images are responsible for confirming that their use complies with the original
+dataset terms and any applicable image rights. The repository's software and
+third-party data should therefore be treated as separate licensing concerns.
 
 Image URLs are built from `sample_ids.json`, not from the filesystem, because the
 deployed function does not contain `public/`. Locally the web app and `preview.py`
@@ -195,7 +242,7 @@ Hugging Face image requests. Search results outside the manifest retain their ra
 evidence and show an image placeholder. Commit `sample_ids.json` and the
 `public/images/` files when preparing the deployment.
 
-## Demo Structure
+## Repository structure
 
 ```text
 .
@@ -221,8 +268,11 @@ evidence and show an image placeholder. Commit `sample_ids.json` and the
         `-- llm.py                 # text-only search query parsing
 ```
 
-This demo only searches an existing Fashion-200K graph. Image attribute extraction
-and graph import are handled by the separate Fashion-Retrieval project.
+## Retrieval method
+
+This repository searches an existing Fashion200K graph. Image attribute
+extraction and graph import are handled by the separate Fashion-Retrieval
+project and are not reproduced here.
 Search uses `(Item)-[:IS_CATEGORY]->(Category)` and the English taxonomy IDs.
 The query parser identifies the category, positive and excluded graph attributes,
 directly named attributes, a positive visual description, and requested
@@ -266,7 +316,7 @@ To regenerate the SVG and PNG with Pillow installed:
 python scripts\render_search_flow.py
 ```
 
-## CLIP baseline
+## Graph-backed CLIP ViT-L/14 baseline
 
 For research comparison, each search also runs a plain CLIP baseline. It appears above
 the FashioNavi results but stays collapsed so it is not mistaken for them: a
