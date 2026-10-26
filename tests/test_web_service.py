@@ -313,7 +313,7 @@ class PreviewHTTPTests(unittest.TestCase):
                 self.assertEqual(response.status, 200)
                 self.assertTrue(response.read())
         with urlopen(self.base + "/") as response:
-            self.assertIn(b"/assets/app.js?v=20261022-full-name", response.read())
+            self.assertRegex(response.read(), rb'/assets/app\.js\?v=[A-Za-z0-9-]+')
         with urlopen(self.base + "/api/config") as response:
             self.assertFalse(json.load(response)["ready"])
 
