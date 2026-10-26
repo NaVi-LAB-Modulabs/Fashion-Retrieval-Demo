@@ -100,7 +100,8 @@ class PersistentCache:
         return sqlite3.connect(self.path, timeout=30)
 
     def get_or_compute(self, namespace: str, signature: Any,
-                       compute: Callable[[], Any]) -> CacheResult:
+                       compute: Callable[[], Any], *,
+                       should_cache: Callable[[Any], bool] | None = None) -> CacheResult:
         key = fingerprint(signature)
         owner = uuid4().hex
         deadline = time.monotonic() + self.wait_seconds
@@ -130,6 +131,10 @@ class PersistentCache:
             value = compute()
             encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, allow_nan=False)
             created = time.time()
+            if should_cache is not None and not should_cache(value):
+                # A degraded search must recover on the next request rather than
+                # becoming the permanently cached result of a temporary outage.
+                return CacheResult(json.loads(encoded), False, key, created)
             with closing(self._connect()) as connection, connection:
                 connection.execute("BEGIN IMMEDIATE")
                 # A replacement worker may have completed after this lease expired.
@@ -162,7 +167,8 @@ def _cache(path: str, ttl: float, max_entries: int) -> PersistentCache:
     return PersistentCache(Path(path), ttl=ttl, max_entries=max_entries)
 
 
-def cached(namespace: str, signature: Any, compute: Callable[[], Any]) -> CacheResult:
+def cached(namespace: str, signature: Any, compute: Callable[[], Any], *,
+           should_cache: Callable[[Any], bool] | None = None) -> CacheResult:
     signature = {"pipeline": pipeline_revision(), "dataset": dataset_revision(),
                  "input": signature}
     if not cache_enabled():
@@ -174,4 +180,4 @@ def cached(namespace: str, signature: Any, compute: Callable[[], Any]) -> CacheR
     max_entries = int(os.getenv("FASHION_CACHE_MAX_ENTRIES", "4096"))
     if not 0 <= ttl < float("inf") or max_entries < 1:
         raise ValueError("Cache TTL must be finite and nonnegative; max entries must be positive")
-    return _cache(str(path), ttl, max_entries).get_or_compute(namespace, signature, compute)
+    return _cache(str(path), ttl, max_entries).get_or_compute(namespace, signature, compute, should_cache=should_cache)

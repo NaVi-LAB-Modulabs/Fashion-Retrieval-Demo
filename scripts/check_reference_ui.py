@@ -15,9 +15,11 @@ def main() -> None:
     parser.add_argument("--base-url", default="http://127.0.0.1:7861")
     parser.add_argument("--run-file", type=Path, default=Path("outputs/style-reference-comparison.json"))
     parser.add_argument("--output-dir", type=Path, default=Path("outputs/ui-check"))
+    parser.add_argument("--fallback", action="store_true", help="Verify a recorded calibration fallback run")
     args = parser.parse_args()
     runs = json.loads(args.run_file.read_text(encoding="utf-8"))
-    run = next(row for row in runs if "comparison" in row and row["items"])
+    run = next(row for row in runs if row["items"] and
+               (row["extraction"].get("style_calibration", {}).get("status") == "fallback") == args.fallback)
     with urlopen(args.base_url + "/api/config") as response:
         config = {**json.load(response), "ready": True, "preview": False}
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -50,6 +52,12 @@ def main() -> None:
             page.locator("#search-button").click()
             page.wait_for_function("document.querySelector('#results-eyebrow').textContent === 'RANKED RESULTS'")
             assert page.locator(".reference-assessment").count() == len(run["extraction"]["style_calibration"]["assessments"])
+            if args.fallback:
+                warning = run["extraction"]["style_calibration"]["warning"]
+                assert warning in page.locator("#notice").inner_text()
+                assert warning in page.locator("#reference-evidence").inner_text()
+                assert "No requested style axes" not in page.locator("#reference-evidence").inner_text()
+                assert "Legacy (image references unavailable)" in page.locator("#run-summary").inner_text()
             reference_ids = page.locator("#results-grid .card-id").all_text_contents()
             assert reference_ids == [item["id"] for item in run["items"]]
             assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")

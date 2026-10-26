@@ -309,7 +309,7 @@ function renderInsights() {
   const calibration = state.run.extraction.style_calibration;
   $("reference-evidence").hidden = !calibration;
   if (calibration) {
-    $("reference-evidence").innerHTML = `<h3 class="insight-label">Reference calibration</h3>${calibration.assessments.length ? calibration.assessments.map((assessment) => {
+    $("reference-evidence").innerHTML = `<h3 class="insight-label">Reference calibration</h3>${calibration.status === "fallback" ? `<p role="status">${escapeHTML(calibration.warning)}</p>` : calibration.assessments.length ? calibration.assessments.map((assessment) => {
       const baseline = calibration.baseline_targets.find((target) => target.axis === assessment.axis);
       const coverage = state.run.style_coverage?.find((entry) => entry.axis === assessment.axis);
       return `<div class="reference-assessment"><button type="button" class="link-button" data-reference-axis="${escapeHTML(assessment.axis)}">${escapeHTML(label(assessment.axis))}</button><p>Legacy ${score(baseline?.target)} → Reference ${score(assessment.target)}</p><p class="muted">Confidence ${score(assessment.confidence)} · ${assessment.active ? "Accepted target" : "Omitted target"}</p>${coverage ? `<p class="${coverage.available_candidates ? "muted" : "weight-invalid"}">Stored axis values: ${coverage.available_candidates}/${coverage.total_candidates} candidates${coverage.available_candidates ? "" : ". Style scoring unavailable."}</p>` : ""}<p>${escapeHTML(assessment.evidence)}</p>${assessment.ambiguity_reason ? `<p>${escapeHTML(assessment.ambiguity_reason)}</p>` : ""}<small>${assessment.supporting_reference_ids.map(escapeHTML).join(", ")}</small></div>`;
@@ -322,8 +322,9 @@ function renderInsights() {
   $("parameter-list").innerHTML = `<dl>${Object.entries(run.params).map(([key, value]) => `<div class="parameter-row"><dt>$${escapeHTML(key)}</dt><dd>${escapeHTML(JSON.stringify(value))}</dd></div>`).join("")}</dl>`;
   $("extraction-code").textContent = JSON.stringify(extracted, null, 2);
   const settings = run.settings;
-  $("run-summary").textContent = `Style: ${run.mode || settings.style_mode || "legacy"} · Parser: ${settings.model} · Results: ${settings.limit} · Min. score: ${settings.min_score ?? "off"} · Min. attribute match: ${settings.min_confidence ?? "off"} · Weights: ${effectiveWeightLabel(settings.weights || {text: .55, graph: .35, style: .10})}. ${run.reranked ? "Weighted reranking applied." : "Graph ranking only."}`;
-  $("run-state").textContent = state.lastAttemptFailed ? "Previous run" : run.cache?.hit ? "Cached result" : "Completed";
+  const styleLabel = calibration?.status === "fallback" ? "Legacy (image references unavailable)" : run.mode || settings.style_mode || "legacy";
+  $("run-summary").textContent = `Style: ${styleLabel} · Parser: ${settings.model} · Results: ${settings.limit} · Min. score: ${settings.min_score ?? "off"} · Min. attribute match: ${settings.min_confidence ?? "off"} · Weights: ${effectiveWeightLabel(settings.weights || {text: .55, graph: .35, style: .10})}. ${run.reranked ? "Weighted reranking applied." : "Graph ranking only."}`;
+  $("run-state").textContent = state.lastAttemptFailed ? "Previous run" : calibration?.status === "fallback" ? "Completed · text style targets" : run.cache?.hit ? "Cached result" : "Completed";
   $("parse-time").textContent = `${run.timings.parse_ms} ms`;
   $("graph-time").textContent = `${run.timings.graph_ms} ms`;
   $("rerank-time").textContent = `${run.timings.rerank_ms} ms`;
@@ -451,7 +452,8 @@ $("search-form").addEventListener("submit", async (event) => {
     state.run = await api(clip ? "/api/clip/search" : "/api/search", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(clip ? {query, limit: payload.limit} : payload), signal: AbortSignal.timeout(240000)});
     state.runAttempt = attempt;
     succeeded = true;
-    notice(`Found ${state.run.result_count} ranked ${state.run.result_count === 1 ? "match" : "matches"} in ${(state.run.timings.total_ms / 1000).toFixed(1)}s.${state.run.cache?.hit ? " Reused the saved result for these search settings." : ""}${state.run.truncated ? " CLIP query truncated to 77 tokens." : ""}`);
+    const calibrationWarning = state.run.extraction?.style_calibration?.warning;
+    notice(`Found ${state.run.result_count} ranked ${state.run.result_count === 1 ? "match" : "matches"} in ${(state.run.timings.total_ms / 1000).toFixed(1)}s.${state.run.cache?.hit ? " Reused the saved result for these search settings." : ""}${state.run.truncated ? " CLIP query truncated to 77 tokens." : ""}${calibrationWarning ? ` ${calibrationWarning}` : ""}`);
   } catch (error) {
     state.lastAttemptFailed = true;
     const message = error.name === "TimeoutError" ? "The search took too long. Please try a simpler query." : error.message || "Could not connect to the search server.";

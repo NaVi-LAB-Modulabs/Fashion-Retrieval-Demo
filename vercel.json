@@ -3,6 +3,7 @@
   "framework": "fastapi",
   "functions": {
     "web_app.py": {
+      "maxDuration": 300,
       "excludeFiles": "public/**"
     }
   }

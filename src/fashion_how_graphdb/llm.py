@@ -68,8 +68,15 @@ def call_text_json_with_error(
     json_schema_name: str = "text_json",
     user_content: list[dict[str, Any]] | None = None,
     max_output_tokens: int | None = None,
+    request_timeout: float | None = None,
+    retry_delays: tuple[float, ...] | None = None,
+    retry_invalid_json: bool = True,
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     retry_text = retry_prompt_text or INVALID_JSON_RETRY_PROMPT
+    delays = RETRY_DELAYS if retry_delays is None else retry_delays
+    if request_timeout is not None:
+        # Calibration owns its bounded retry budget; SDK retries must not extend it.
+        client = client.with_options(timeout=request_timeout, max_retries=0)
     text_format = _text_format(json_schema, json_schema_name)
     request_input = [
         {
@@ -89,7 +96,7 @@ def call_text_json_with_error(
         create_kwargs["text"] = text_format
 
     last_text: str | None = None
-    for attempt in range(len(RETRY_DELAYS) + 1):
+    for attempt in range(len(delays) + 1):
         try:
             response = client.responses.create(
                 input=request_input,
@@ -102,9 +109,9 @@ def call_text_json_with_error(
             if (
                 name == "RateLimitError"
                 and _is_retryable_rate_limit(exc)
-                and attempt < len(RETRY_DELAYS)
+                and attempt < len(delays)
             ):
-                time.sleep(RETRY_DELAYS[attempt])
+                time.sleep(delays[attempt])
                 continue
             return None, _llm_error(
                 stage="api_call",
@@ -125,6 +132,8 @@ def call_text_json_with_error(
             model=model,
             response_excerpt=_excerpt(last_text),
         )
+        if not retry_invalid_json:
+            return None, first_parse_error
         try:
             retry_response = client.responses.create(
                 input=[

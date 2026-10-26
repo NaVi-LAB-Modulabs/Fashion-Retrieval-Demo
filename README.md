@@ -358,6 +358,11 @@ image_embedding_model    # clip-ViT-L-14
 
 ## Neo4j Item Properties
 
+Reference style calibration uses required axis keys, per-axis score ranges, and
+one allowed supporting image ID per axis. If calibration is unavailable, search
+continues with text-based style targets and displays an explicit notice. These
+fallback results are not cached. See [reference design and recovery behavior](docs/reference-style-experiment.md).
+
 ### Experimental image-reference style targets
 
 The web UI now offers **Image references** and **Legacy** target modes. Image

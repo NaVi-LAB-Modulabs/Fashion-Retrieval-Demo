@@ -13,7 +13,7 @@ weighted mean. API requests without `style_mode` retain legacy behavior.
 The initial parser selects requested axes and garment constraints. A second,
 multimodal call receives the original query and labeled image sheets for only
 those axes. It does not receive the baseline numbers. It interpolates a
-continuous target on the supplied global scale and cites reference IDs.
+continuous target on the supplied global scale and selects one supporting reference.
 The resulting targets replace the parser's style targets before reranking.
 Stored item values, graph filters, vectors and scoring weights are unchanged.
 
@@ -25,11 +25,43 @@ Three axes have 40 human references each at 0.25/0.50/0.75/1.00; four axes have
 in `web/style-references/`, with IDs, image hashes and provenance in the manifest.
 No new or generated reference garments are substituted.
 
-Reference outputs outside an axis range, duplicate/missing axes, and citations
-to unsupplied images are rejected. Ambiguous or below-0.75-confidence axes are
-omitted from scoring and recorded in the evidence. There is no silent fallback
-to baseline targets on an API failure. Reference hashes, prompt, model snapshot,
-and algorithm changes invalidate the relevant caches.
+The model response is an object keyed by the requested axes, with every key
+required and additional keys forbidden. Each axis has its own numeric range and
+`supporting_reference_id` enum, drawn directly from the validated manifest. A
+single citation avoids duplicate-reference arrays; fixed keys avoid duplicate
+axis rows. Public responses still expose an `assessments` array with
+`supporting_reference_ids` for compatibility with the inspector and exports.
+
+| Axis | Valid target range | Interpretation |
+| --- | --- | --- |
+| `visual_trend` | 0.25–1.00 | Statement-led to timeless design, not current popularity |
+| `thermal_impression` | 0.25–1.00 | Airy to warm-looking construction, not color temperature |
+| `design_expression` | 0.25–1.00 | Soft-romantic to menswear-inspired construction, not wearer identity |
+| `young_mature` | 0.00–1.00 | Playful to composed design, not wearer age |
+| `soft_sharp` | 0.00–1.00 | Rounded to angular construction |
+| `casual_formal` | 0.00–1.00 | Casual to formal construction |
+| `minimal_maximal` | 0.00–1.00 | Restrained to decorative detail |
+
+These retain the catalog's original scales. Axes are independent; garment type
+alone does not determine a style position. Ambiguous or below-0.75-confidence
+assessments are omitted from scoring and retained in the evidence.
+
+The server validates outputs even with a strict schema. Invalid output gets one
+repair attempt with the same images and rubric. Calibration requests use a
+30-second SDK timeout, no SDK/rate-limit/JSON retries, and at most two calls for
+semantic validation. If calibration still fails (including missing assets or
+provider errors), retrieval continues with the original parser targets.
+`style_calibration.status` is `fallback`, `effective_mode` is `legacy`, and a
+visible notice explains the change. No fabricated reference evidence is shown.
+Successful calibration uses status `calibrated`; no requested axes uses `skipped`.
+The degraded search is not cached, so the next request can recover. Successful
+calibrations and searches retain the existing revision-aware caching.
+
+Vercel's `web_app.py` function allows 300 seconds and retains the reference assets
+in its bundle; only `public/**` is excluded because the CDN serves product images.
+SQLite uses the writable temporary directory when `VERCEL` is set. Its contents
+remain instance-local and ephemeral. Calibration resilience does not guarantee
+availability of the parser, database, network, or hosting service.
 
 ## Comparison
 
@@ -99,6 +131,7 @@ Pillow is a development-only dependency. Runtime deployment reads packaged JPEGs
 
 ```sh
 python scripts/package_style_references.py /path/to/Fashion-Retrieval
+python -m pip install -r requirements-dev.txt
 python -m unittest discover -s tests -v
 python scripts/evaluate_style_references.py --env-file /path/to/local/.env
 python scripts/evaluate_style_references.py --base-url https://your-site.vercel.app

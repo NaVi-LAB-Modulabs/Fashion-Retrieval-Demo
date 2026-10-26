@@ -224,11 +224,12 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
         "database": {"uri": DEFAULT_NEO4J_URI, "database": DEFAULT_NEO4J_DATABASE,
                      "user": DEFAULT_NEO4J_USER},
         "provider": os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
-        "style_reference_revision": style_references.reference_revision() if request["style_mode"] == "reference" else None,
+        "style_reference_revision": style_references.optional_reference_revision() if request["style_mode"] == "reference" else None,
         "clip_index_revision": clip_onnx.index_revision() if request["compare_clip"] else None,
         "clip_runtime": clip_onnx.runtime_provenance() if request["compare_clip"] else None,
     }
-    entry = cached("search", signature, lambda: _retrieve_uncached(request))
+    entry = cached("search", signature, lambda: _retrieve_uncached(request), should_cache=lambda result:
+                   result["extraction"].get("style_calibration", {}).get("status") != "fallback")
     response = entry.value
     original_timings = dict(response["timings"])
     if entry.hit:
@@ -237,6 +238,7 @@ def retrieve(payload: dict[str, Any]) -> dict[str, Any]:
     response["cache"] = {"enabled": cache_enabled(), "hit": entry.hit,
                          "key": entry.key, "created_at": entry.created_at,
                          "original_timings": original_timings}
+    response["cache"]["reusable"] = response["extraction"].get("style_calibration", {}).get("status") != "fallback"
     return response
 
 
