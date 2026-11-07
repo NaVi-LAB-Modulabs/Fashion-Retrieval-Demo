@@ -258,7 +258,7 @@ def _retrieve_uncached(request: dict[str, Any]) -> dict[str, Any]:
 
     def select_and_fetch(session: Any) -> tuple[Any, ...]:
         with retrieval_stage("candidate selection"):
-            candidate_ids, embedding = hybrid_search.select_candidates(
+            candidate_ids, embedding, candidate_query, candidate_params = hybrid_search.select_candidates(
                 session, extraction, request["query"], client=openai_client(),
                 embedding_model=search.DEFAULT_EMBEDDING_MODEL,
                 min_confidence=request["min_confidence"],
@@ -271,9 +271,10 @@ def _retrieve_uncached(request: dict[str, Any]) -> dict[str, Any]:
             raw_results = [
                 dict(row["result"]) for row in session.run(cypher, **query_params)
             ] if candidate_ids else []
-        return candidate_ids, embedding, cypher, query_params, raw_results
+        return candidate_ids, embedding, candidate_query, candidate_params, cypher, query_params, raw_results
 
-    candidate_ids, embedding, cypher, query_params, raw_results = neo4j_read(select_and_fetch)
+    (candidate_ids, embedding, candidate_query, candidate_params,
+     cypher, query_params, raw_results) = neo4j_read(select_and_fetch)
     retrieved = perf_counter()
     with retrieval_stage("reranking"):
         items = hybrid_search.rerank(
@@ -287,7 +288,7 @@ def _retrieve_uncached(request: dict[str, Any]) -> dict[str, Any]:
             weights=request["weights"],
         ) if request["compare_styles"] else None
     params = {
-        **hybrid_search.candidate_cypher(extraction)[1],
+        **candidate_params,
         "candidate_ids": candidate_ids,
         "item_type_codes": query_params["item_type_codes"],
         "candidate_branch_limit": hybrid_search.CANDIDATE_BRANCH_SIZE,
@@ -319,7 +320,7 @@ def _retrieve_uncached(request: dict[str, Any]) -> dict[str, Any]:
     response = {
         "query": request["query"], "settings": request, "items": results,
         "extraction": extraction, "cypher": cypher, "params": params,
-        "candidate_cypher": hybrid_search.candidate_cypher(extraction)[0],
+        "candidate_cypher": candidate_query,
         "description_candidate_cypher": hybrid_search.description_candidate_cypher(),
         "candidate_count": len(raw_results), "result_count": len(results),
         "style_coverage": [{"axis": target["axis"], "total_candidates": len(raw_results),

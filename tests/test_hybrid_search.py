@@ -128,7 +128,7 @@ class HybridSearchTests(unittest.TestCase):
             data=[SimpleNamespace(embedding=[0.1, 0.2])]
         )
 
-        ids, embedding = hybrid_search.select_candidates(
+        ids, embedding, _, _ = hybrid_search.select_candidates(
             session, extraction, "white zippered jacket", client=client,
             embedding_model="text-embedding-3-large", min_confidence=.5,
         )
@@ -224,7 +224,7 @@ class HybridSearchTests(unittest.TestCase):
         client.embeddings.create.return_value = SimpleNamespace(
             data=[SimpleNamespace(embedding=[0.1, 0.2])]
         )
-        ids, _ = hybrid_search.select_candidates(
+        ids, *_ = hybrid_search.select_candidates(
             session, extraction, "shirt", client=client,
             embedding_model="text-embedding-3-large", min_confidence=0.5,
         )
@@ -242,7 +242,7 @@ class HybridSearchTests(unittest.TestCase):
         self.assertEqual(hybrid_search.select_candidates(
             session, {}, "white jacket", client=client,
             embedding_model="text-embedding-3-large", min_confidence=.5,
-        ), ([], []))
+        )[:2], ([], []))
         session.run.assert_called_once()
         client.embeddings.create.assert_not_called()
 
@@ -254,7 +254,7 @@ class HybridSearchTests(unittest.TestCase):
         self.assertEqual(hybrid_search.select_candidates(
             session, {}, "white jacket", client=client,
             embedding_model="text-embedding-3-large", min_confidence=.5,
-        ), (["graph"], []))
+        )[:2], (["graph"], []))
         session.run.assert_called_once()
         client.embeddings.create.assert_not_called()
 
