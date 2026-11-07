@@ -188,7 +188,6 @@ def select_candidates(
     *,
     client: Any,
     embedding_model: str,
-    limit: int,
     min_confidence: float | None,
 ) -> tuple[list[str], list[float]]:
     cypher, params = candidate_cypher(extraction)
@@ -458,8 +457,7 @@ def retrieve_parsed(
 ) -> dict[str, Any]:
     candidate_ids, embedding = select_candidates(
         session, extraction, query, client=client,
-        embedding_model=embedding_model, limit=limit,
-        min_confidence=min_confidence,
+        embedding_model=embedding_model, min_confidence=min_confidence,
     )
     cypher = result_cypher(extraction)
     params = result_params(extraction, candidate_ids, embedding, embedding_model)

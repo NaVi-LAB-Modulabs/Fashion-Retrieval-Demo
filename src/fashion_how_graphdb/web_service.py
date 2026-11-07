@@ -261,7 +261,7 @@ def _retrieve_uncached(request: dict[str, Any]) -> dict[str, Any]:
             candidate_ids, embedding = hybrid_search.select_candidates(
                 session, extraction, request["query"], client=openai_client(),
                 embedding_model=search.DEFAULT_EMBEDDING_MODEL,
-                limit=request["limit"], min_confidence=request["min_confidence"],
+                min_confidence=request["min_confidence"],
             )
         with retrieval_stage("Neo4j retrieval"):
             cypher = hybrid_search.result_cypher(extraction)
@@ -366,7 +366,7 @@ def retrieve_baseline(payload: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError("The CLIP baseline is not available. Configure Neo4j.")
     started = perf_counter()
     with retrieval_stage("CLIP query encoding"):
-        embedding = baseline.text_embedding(baseline.clip_encoder(), request["query"])
+        embedding = baseline.clip_encoder().encode(request["query"])
     encoded = perf_counter()
     with retrieval_stage("baseline similarity search"):
         rows = neo4j_read(lambda session: baseline.search(session, embedding, limit=request["limit"]))

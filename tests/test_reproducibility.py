@@ -165,7 +165,7 @@ class ReproducibleRetrievalTests(unittest.TestCase):
         with patch.object(hybrid_search, "query_embedding", return_value=[1, 0]):
             ids, _ = hybrid_search.select_candidates(
                 session, {}, "blue shirt", client=self.client,
-                embedding_model="model", limit=1, min_confidence=None,
+                embedding_model="model", min_confidence=None,
             )
         self.assertEqual(ids, ["a", "b"])
         query = session.run.call_args.args[0]

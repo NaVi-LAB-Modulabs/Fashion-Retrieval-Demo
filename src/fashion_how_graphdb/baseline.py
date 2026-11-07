@@ -44,13 +44,9 @@ BASELINE_CYPHER = (
 _encoder_lock = Lock()
 
 
+@lru_cache(maxsize=1)
 def encoder_available() -> bool:
     # The model is downloaded on first use, so only the runtime packages are checked here.
-    return _runtime_installed()
-
-
-@lru_cache(maxsize=1)
-def _runtime_installed() -> bool:
     return all(importlib.util.find_spec(name) for name in ("onnxruntime", "tokenizers", "numpy", "httpx"))
 
 
@@ -91,10 +87,6 @@ def clip_encoder() -> ClipTextEncoder:
     # Loading takes seconds; the lock keeps concurrent first calls from loading twice.
     with _encoder_lock:
         return _load_encoder()
-
-
-def text_embedding(encoder: Any, text: str) -> list[float]:
-    return encoder.encode(text)
 
 
 def search(session: Any, embedding: list[float], *, limit: int) -> list[dict[str, Any]]:
