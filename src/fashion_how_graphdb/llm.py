@@ -195,8 +195,7 @@ def _llm_error(
 
 
 def _is_retryable_rate_limit(exc: Exception) -> bool:
-    message = str(exc).lower()
-    return "insufficient_quota" not in message and "quota" not in message
+    return "quota" not in str(exc).lower()
 
 
 def _excerpt(text: Any) -> str:

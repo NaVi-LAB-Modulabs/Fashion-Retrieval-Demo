@@ -1,4 +1,4 @@
-"""CPU-only ONNX CLIP text/image encoders and exact catalog retrieval."""
+"""CPU-only ONNX CLIP text encoder and exact retrieval over the precomputed catalog index."""
 
 from __future__ import annotations
 
@@ -23,10 +23,10 @@ DIMENSION = 512
 TOKEN_LIMIT = 77
 ASSETS = {
     "text": ("onnx/text_model_quantized.onnx", "sha256", "73baab855d406190da9faa498cfedf65f15cf309f4cc7385b7b032e6d08e5c3a"),
-    "vision": ("onnx/vision_model_quantized.onnx", "sha256", "583fd1110a514667812fee7d684952aaf82a99b959760c8d7dca7e0ab9839299"),
     "tokenizer": ("tokenizer.json", "git", "bc1f77d20440541dd073ebae6f6c401087c7d34e"),
-    "preprocessor": ("preprocessor_config.json", "git", "e0675735fd0052745f2f7b7291e4aa7859389998"),
 }
+# data/clip was encoded offline with this vision tower from the same checkpoint.
+INDEX_VISION_SHA256 = "583fd1110a514667812fee7d684952aaf82a99b959760c8d7dca7e0ab9839299"
 _asset_lock = Lock()
 
 
@@ -74,7 +74,7 @@ def hub_file(repo: str, revision: str, filename: str, algorithm: str, expected: 
     return path
 
 
-@lru_cache(maxsize=2)
+@lru_cache(maxsize=1)
 def encoder_session(kind: str) -> Any:
     import onnxruntime as ort
     options = ort.SessionOptions()
@@ -133,41 +133,10 @@ def encode_text(query: str) -> tuple[Any, int, bool]:
 
 
 @lru_cache(maxsize=1)
-def image_preprocessor() -> dict:
-    return json.loads(model_asset("preprocessor").read_text(encoding="utf-8"))
-
-
-def image_tensor(path: Path) -> Any:
-    import numpy as np
-    from PIL import Image, ImageOps
-    config = image_preprocessor()
-    shortest = config["size"]["shortest_edge"]
-    crop = config["crop_size"]
-    with Image.open(path) as image:
-        image = ImageOps.exif_transpose(image).convert("RGB")
-        width, height = image.size
-        scale = shortest / min(width, height)
-        image = image.resize((int(width * scale), int(height * scale)), resample=Image.Resampling.BICUBIC)
-        left, top = (image.width - crop["width"]) // 2, (image.height - crop["height"]) // 2
-        image = image.crop((left, top, left + crop["width"], top + crop["height"]))
-        pixels = np.asarray(image, dtype=np.float32) * config["rescale_factor"]
-    return ((pixels - np.asarray(config["image_mean"], dtype=np.float32)) /
-            np.asarray(config["image_std"], dtype=np.float32)).transpose(2, 0, 1)
-
-
-def encode_images(paths: list[Path]) -> Any:
-    import numpy as np
-    session = encoder_session("vision")
-    pixels = np.stack([image_tensor(path) for path in paths])
-    output = session.run(["image_embeds"], {"pixel_values": pixels})[0]
-    return normalized_vectors(output)
-
-
-@lru_cache(maxsize=1)
 def index_manifest() -> dict:
     manifest = json.loads((INDEX_DIR / "manifest.json").read_text(encoding="utf-8"))
     if (manifest["model"] != MODEL_REPO or manifest["model_revision"] != MODEL_REVISION
-            or manifest["dimension"] != DIMENSION or manifest["vision_sha256"] != ASSETS["vision"][2]
+            or manifest["dimension"] != DIMENSION or manifest["vision_sha256"] != INDEX_VISION_SHA256
             or manifest["text_sha256"] != ASSETS["text"][2]):
         raise ValueError("CLIP index and encoder must share the same model and revision")
     return manifest

@@ -12,6 +12,7 @@ dependencies = [
     # CLIP query encoders (ONNX, CPU); models are downloaded from Hugging Face on first use.
     "onnxruntime>=1.20.0,<2.0",
     "tokenizers>=0.21.0,<1.0",
+    "httpx>=0.27.0,<1.0",
     "numpy>=1.26.0,<3.0",
 ]
 

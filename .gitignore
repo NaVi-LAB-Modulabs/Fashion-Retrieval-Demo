@@ -10,3 +10,5 @@ outputs/
 .vercel/
 models/*.onnx
 .vscode/
+.DS_Store
+.impeccable/

@@ -153,6 +153,10 @@ class RetrievalTests(unittest.TestCase):
         self.assertEqual(result["candidate_count"], 20)
         self.assertEqual(result["params"]["branch_limit"], 10)
         self.assertNotIn("vector.similarity.cosine", result["candidate_cypher"])
+        # The response shows the candidate query and params that actually ran.
+        candidate_call = session.run.call_args_list[0]
+        self.assertEqual(result["candidate_cypher"], candidate_call.args[0])
+        self.assertEqual(result["params"]["required_0"], candidate_call.kwargs["required_0"])
         self.assertIn("SEARCH item IN", result["description_candidate_cypher"])
         self.assertEqual(len(session.run.call_args_list[1].kwargs["filtered_ids"]), 25)
         self.assertIsInstance(result["params"]["filtered_ids"], str)
