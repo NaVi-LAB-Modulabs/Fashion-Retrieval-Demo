@@ -1,13 +1,11 @@
 """Offline integration checks for the web retrieval adapter and preview server."""
 
-from contextlib import ExitStack
 from http.server import ThreadingHTTPServer
 import json
 from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
 from threading import Thread
-from types import SimpleNamespace
 import unittest
 from unittest.mock import MagicMock, patch
 from urllib.error import HTTPError
@@ -19,51 +17,16 @@ sys.path.insert(0, str(ROOT))
 
 from fashion_how_graphdb import web_service as service
 from preview import PreviewHandler
+from helpers import retrieval_fixture
 
 
 class RetrievalTests(unittest.TestCase):
     def setUp(self):
-        isolation = patch.dict("os.environ", {"FASHION_CACHE_ENABLED": "0", "FASHION_VECTOR_SEARCH_MODE": "hnsw"})
-        isolation.start()
-        self.addCleanup(isolation.stop)
-        self.extraction = {
-            "item_type_codes": ["tops"],
-            "common_filters": [{"group": "colors", "value": "blue", "hard": True}],
-            "category_filters": [], "excluded_common_filters": [],
-            "excluded_category_filters": [], "description_query": "",
-            "style_axis_targets": [],
-        }
+        self.helper = self.enterContext(retrieval_fixture())
+        self.extraction = self.helper.extraction
 
     def run_search(self, rows, **settings):
-        driver = MagicMock()
-        session = driver.session.return_value.__enter__.return_value
-        def run_query(cypher, **params):
-            if "AS description_eligible" in cypher:
-                extraction = service.search.normalize_extraction(self.extraction)
-                eligible = [row for row in rows if service.hybrid_search.passes_hard_filters(
-                    row.get("mapped_attributes") or [], extraction, params["min_confidence"],
-                )]
-                return [{"id": row["id"], "graph_score": service.hybrid_search.graph_score(
-                    row.get("mapped_attributes") or [], extraction, params["min_confidence"],
-                )[0], "description_eligible": row.get("text_score") is not None} for row in eligible]
-            if "ORDER BY text_score DESC, id ASC" in cypher:
-                text = sorted([row for row in rows if row["id"] in params["filtered_ids"]],
-                              key=lambda row: (-row["text_score"], row["id"]))[:params["branch_limit"]]
-                return [{"id": row["id"], "text_score": row["text_score"]} for row in text]
-            return [{"result": row} for row in rows if row["id"] in params["candidate_ids"]]
-        session.run.side_effect = run_query
-        client = MagicMock()
-        client.embeddings.create.return_value = SimpleNamespace(data=[SimpleNamespace(embedding=[1.0, 0.0])])
-        with ExitStack() as stack:
-            stack.enter_context(patch.object(service, "configuration", return_value={"ready": True}))
-            stack.enter_context(patch.object(service, "neo4j_driver", return_value=driver))
-            stack.enter_context(patch.object(service, "openai_client", return_value=client))
-            stack.enter_context(patch.object(
-                service.search, "extract_search_filters",
-                return_value=service.search.normalize_extraction(self.extraction),
-            ))
-            result = service.retrieve({"query": "a blue blouse", **settings})
-        return result, session, client
+        return self.helper.run_search(rows, **settings)
 
     @patch.object(service, "manifest_ids", return_value=frozenset({"51727804_0"}))
     def test_graph_results_keep_evidence_and_hide_unknown_properties(self, manifest_ids):

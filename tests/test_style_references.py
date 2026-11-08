@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 
 from fashion_how_graphdb import llm, style_references as refs, web_service as service
 from fashion_how_graphdb.diagnostics import failure_details
-import test_web_service as integration
+from helpers import retrieval_fixture
 
 
 class ReferenceTests(unittest.TestCase):
@@ -212,9 +212,7 @@ class ReferenceTests(unittest.TestCase):
 
 class ComparisonTests(unittest.TestCase):
     def test_reference_mode_reranks_the_identical_candidate_pool_against_legacy(self):
-        helper = integration.RetrievalTests()
-        helper.setUp()
-        try:
+        with retrieval_fixture() as helper:
             helper.extraction["style_axis_targets"] = [{"axis": "casual_formal", "target": 1., "evidence": "formal"}]
             def calibrate(query, extraction, **kwargs):
                 return {**extraction, "style_axis_targets": [{"axis": "casual_formal", "target": .7, "evidence": "references"}]}
@@ -233,8 +231,6 @@ class ComparisonTests(unittest.TestCase):
             call.assert_called_once()
             client.embeddings.create.assert_called_once()
             self.assertNotIn("internal_note", result["comparison"]["items"][0])
-        finally:
-            helper.doCleanups()
 
     def test_legacy_mode_remains_default_and_invalid_comparison_is_rejected(self):
         self.assertEqual(service.validate_request({"query": "formal"})["style_mode"], "legacy")

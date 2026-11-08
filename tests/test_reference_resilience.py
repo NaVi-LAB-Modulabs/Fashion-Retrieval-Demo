@@ -14,15 +14,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "src"), str(ROOT / "tests")]
 
 from fashion_how_graphdb import reproducibility as repro, style_references as refs
-import test_web_service as integration
+from helpers import retrieval_fixture
 import web_app
 
 
 class ResilienceTests(unittest.TestCase):
     def setUp(self):
-        self.helper = integration.RetrievalTests()
-        self.helper.setUp()
-        self.addCleanup(self.helper.doCleanups)
+        self.helper = self.enterContext(retrieval_fixture())
         self.helper.extraction["style_axis_targets"] = [
             {"axis": "casual_formal", "target": 1., "evidence": "formal"}]
         self.rows = [{"id": "51727804_0", "text_score": .8, "casual_formal": .8,
