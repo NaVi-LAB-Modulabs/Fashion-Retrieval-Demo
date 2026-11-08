@@ -1,6 +1,6 @@
 # FashioNavi
 
-**Fashion Navigator with Attribute-Enriched Graphs and Hybrid Retrieval**
+**FashioNavi: Fashion Navigator with Attribute-Enriched Graphs and Hybrid Retrieval**
 
 [Jiyoon Myung†](https://www.linkedin.com/in/jiyoon-myung), [Yujin Jung†](https://www.linkedin.com/in/유진-정-59b296258), [Mia Lim†](https://www.linkedin.com/in/seoyounglim), [Youjin Jeon†](https://www.linkedin.com/in/youjinjeon), and Jaein Kim†  
 
