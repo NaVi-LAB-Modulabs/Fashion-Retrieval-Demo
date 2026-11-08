@@ -38,14 +38,30 @@ class PreviewHandler(BaseHTTPRequestHandler):
         if file is None or not file.is_file():
             self.send_error(404)
             return
-        self.send_data(file.read_bytes(), mimetypes.guess_type(file.name)[0] or "application/octet-stream")
+        self.send_data(
+            file.read_bytes(),
+            mimetypes.guess_type(file.name)[0] or "application/octet-stream",
+        )
 
     def do_POST(self):
-        self.send_data(json.dumps({"detail": "This is a catalog preview. Run python web_app.py with the server dependencies and credentials to enable live search."}).encode(), "application/json", 503)
+        self.send_data(
+            json.dumps({
+                "detail": "This is a catalog preview. Run python web_app.py with the server dependencies and credentials to enable live search.",
+            }).encode(),
+            "application/json",
+            503,
+        )
 
     def send_data(self, data, content_type, status=200, cache_control="no-store"):
         self.send_response(status)
-        self.send_header("Content-Type", content_type + ("; charset=utf-8" if content_type.startswith("text/") or content_type == "application/json" else ""))
+        self.send_header(
+            "Content-Type",
+            content_type + (
+                "; charset=utf-8"
+                if content_type.startswith("text/") or content_type == "application/json"
+                else ""
+            ),
+        )
         self.send_header("Content-Length", str(len(data)))
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Cache-Control", cache_control)
