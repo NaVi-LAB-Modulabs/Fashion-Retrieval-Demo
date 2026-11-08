@@ -188,14 +188,14 @@ def select_candidates(
     *,
     client: Any,
     embedding_model: str,
-    limit: int,
     min_confidence: float | None,
-) -> tuple[list[str], list[float]]:
+) -> tuple[list[str], list[float], str, dict[str, Any]]:
+    """Return candidate IDs, the query embedding, and the candidate Cypher and params it ran."""
     cypher, params = candidate_cypher(extraction)
     rows = list(session.run(cypher, **params, embedding_model=embedding_model,
                             min_confidence=min_confidence))
     if not rows:
-        return [], []
+        return [], [], cypher, params
     graph_rows = heapq.nsmallest(
         CANDIDATE_BRANCH_SIZE,
         (row for row in rows if row["graph_score"] is not None),
@@ -205,7 +205,7 @@ def select_candidates(
     # Pass the entire filtered population, never just the attribute top 10.
     filtered_ids = sorted(set(row["id"] for row in rows if row["description_eligible"]), key=str)
     if not filtered_ids:
-        return list(dict.fromkeys(ids)), []
+        return list(dict.fromkeys(ids)), [], cypher, params
     semantic_query = search._normalize_description_query(extraction.get("description_query")) or query
     embedding = query_embedding(client, semantic_query, embedding_model)
     allowed_ids = set(filtered_ids)
@@ -215,7 +215,7 @@ def select_candidates(
         text_params["embedding_model"] = embedding_model
     text_rows = session.run(description_candidate_cypher(), **text_params)
     ids.extend(row["id"] for row in text_rows if row["id"] in allowed_ids)
-    return list(dict.fromkeys(ids)), embedding
+    return list(dict.fromkeys(ids)), embedding, cypher, params
 
 
 def result_cypher(extraction: dict[str, Any]) -> str:
@@ -456,10 +456,9 @@ def retrieve_parsed(
     min_confidence: float | None,
     min_score: float | None,
 ) -> dict[str, Any]:
-    candidate_ids, embedding = select_candidates(
+    candidate_ids, embedding, candidate_query, candidate_params = select_candidates(
         session, extraction, query, client=client,
-        embedding_model=embedding_model, limit=limit,
-        min_confidence=min_confidence,
+        embedding_model=embedding_model, min_confidence=min_confidence,
     )
     cypher = result_cypher(extraction)
     params = result_params(extraction, candidate_ids, embedding, embedding_model)
@@ -472,10 +471,10 @@ def retrieve_parsed(
     )
     return {
         "cypher": cypher,
-        "candidate_cypher": candidate_cypher(extraction)[0],
+        "candidate_cypher": candidate_query,
         "description_candidate_cypher": description_candidate_cypher(),
         "params": {
-            **candidate_cypher(extraction)[1],
+            **candidate_params,
             "candidate_ids": candidate_ids,
             "item_type_codes": params["item_type_codes"],
             "candidate_branch_limit": CANDIDATE_BRANCH_SIZE,

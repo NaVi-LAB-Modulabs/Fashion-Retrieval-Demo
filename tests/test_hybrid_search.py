@@ -128,9 +128,9 @@ class HybridSearchTests(unittest.TestCase):
             data=[SimpleNamespace(embedding=[0.1, 0.2])]
         )
 
-        ids, embedding = hybrid_search.select_candidates(
+        ids, embedding, _, _ = hybrid_search.select_candidates(
             session, extraction, "white zippered jacket", client=client,
-            embedding_model="text-embedding-3-large", limit=12, min_confidence=.5,
+            embedding_model="text-embedding-3-large", min_confidence=.5,
         )
 
         self.assertEqual(ids, ["graph-1", "both", *[f"other-{i}" for i in range(8)], "vector-1"])
@@ -224,9 +224,9 @@ class HybridSearchTests(unittest.TestCase):
         client.embeddings.create.return_value = SimpleNamespace(
             data=[SimpleNamespace(embedding=[0.1, 0.2])]
         )
-        ids, _ = hybrid_search.select_candidates(
+        ids, *_ = hybrid_search.select_candidates(
             session, extraction, "shirt", client=client,
-            embedding_model="text-embedding-3-large", limit=12, min_confidence=0.5,
+            embedding_model="text-embedding-3-large", min_confidence=0.5,
         )
         self.assertEqual(ids, ["vector-1"])
         self.assertEqual(session.run.call_count, 2)
@@ -241,8 +241,8 @@ class HybridSearchTests(unittest.TestCase):
         session.run.return_value = []
         self.assertEqual(hybrid_search.select_candidates(
             session, {}, "white jacket", client=client,
-            embedding_model="text-embedding-3-large", limit=20, min_confidence=.5,
-        ), ([], []))
+            embedding_model="text-embedding-3-large", min_confidence=.5,
+        )[:2], ([], []))
         session.run.assert_called_once()
         client.embeddings.create.assert_not_called()
 
@@ -253,8 +253,8 @@ class HybridSearchTests(unittest.TestCase):
         ]
         self.assertEqual(hybrid_search.select_candidates(
             session, {}, "white jacket", client=client,
-            embedding_model="text-embedding-3-large", limit=20, min_confidence=.5,
-        ), (["graph"], []))
+            embedding_model="text-embedding-3-large", min_confidence=.5,
+        )[:2], (["graph"], []))
         session.run.assert_called_once()
         client.embeddings.create.assert_not_called()
 

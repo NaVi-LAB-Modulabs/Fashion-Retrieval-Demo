@@ -610,12 +610,13 @@ def main() -> None:
     client = _build_openai_client()
     if args.dry_run:
         extraction = extract_search_filters(query, client=client, model=args.model)
+        candidate_query, candidate_params = hybrid_search.candidate_cypher(extraction)
         print(
             json.dumps(
                 {
                     "extraction": extraction,
-                    "candidate_cypher": hybrid_search.candidate_cypher(extraction)[0],
-                    "candidate_params": hybrid_search.candidate_cypher(extraction)[1],
+                    "candidate_cypher": candidate_query,
+                    "candidate_params": candidate_params,
                     "description_candidate_cypher": hybrid_search.description_candidate_cypher(),
                     "result_cypher": hybrid_search.result_cypher(extraction),
                 },
