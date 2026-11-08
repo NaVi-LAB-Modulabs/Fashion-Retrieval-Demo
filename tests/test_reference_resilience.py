@@ -1,5 +1,6 @@
 """Reference failures must not become HTTP failures or persistent search results."""
 
+from contextlib import closing
 from pathlib import Path
 import json
 import sqlite3
@@ -81,7 +82,7 @@ class ResilienceTests(unittest.TestCase):
             entry = repro.cached("search", "fallback", lambda: {"status": "fallback"}, should_cache=lambda value: False)
             path = Path(directory) / "fashion-search" / "retrieval.sqlite3"
             self.assertTrue(path.exists())
-            with sqlite3.connect(path) as connection:
+            with closing(sqlite3.connect(path)) as connection, connection:
                 self.assertEqual(connection.execute("SELECT COUNT(*) FROM entries").fetchone()[0], 0)
                 self.assertEqual(connection.execute("SELECT COUNT(*) FROM leases").fetchone()[0], 0)
             self.assertFalse(entry.hit)

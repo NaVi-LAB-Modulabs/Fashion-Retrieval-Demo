@@ -1,31 +1,76 @@
 # FashioNavi
 
-*Navigating Fashion Retrieval through Knowledge Graphs and Interpretable Style Axes*
+**Fashion Navigator with Attribute-Enriched Graphs and Hybrid Retrieval**
 
-**[Live demo](https://fashion-retrieval-demo.vercel.app/)**
+[Jiyoon Myung†](https://www.linkedin.com/in/jiyoon-myung), [Yujin Jung†](https://www.linkedin.com/in/유진-정-59b296258), [Mia Lim†](https://www.linkedin.com/in/seoyounglim), [Youjin Jeon†](https://www.linkedin.com/in/youjinjeon), and Jaein Kim†  
 
-FashioNavi turns a natural-language clothing request such as *"a casual blue shirt,
-not white, for daily wear"* into ranked garment images. Unlike plain embedding search,
-the request is first parsed into hard constraints, so exclusions like "not white"
-are actually enforced. Every result also shows why it ranked where it did.
+*NaVi LAB, Seoul, Republic of Korea · † Equal contribution*
 
-![Retrieval flow](web/search-flow.svg)
+<p align="center">
+  <strong>📄 Paper (link pending) | <a href="https://github.com/NaVi-LAB-Modulabs/Fashion-Retrieval-Demo">💻 Code</a> | <a href="https://fashion-retrieval-demo.vercel.app/">🚀 Live Demo</a></strong>
+</p>
 
-## Quick start
+## 📝 Abstract
 
-### 1. Try it online
+Natural-language fashion queries often combine explicit product requirements with subjective style preferences, making them difficult to satisfy with a single similarity score. We present **FashioNavi**, a hybrid fashion retrieval system that combines an attribute-enriched product graph, vision-language model (VLM)-generated descriptions, and fine-grained style axes. FashioNavi decomposes each query into attribute constraints, a visual description, and style targets. It then applies graph-based filtering and semantic retrieval, followed by hybrid reranking. The interactive demo makes the retrieval process transparent by showing parsed queries, item-level evidence, and component scores. Adjustable settings and an unfiltered CLIP baseline allow users to explore how each retrieval signal affects the results.
 
-Open the **[live demo](https://fashion-retrieval-demo.vercel.app/)**. No setup is
-needed. Some queries to try:
+## 🔎 Overview
+
+FashioNavi consists of two stages:
+
+- **Offline graph construction:** Extract typed product attributes, seven reference-grounded style scores, and VLM-generated descriptions designed to distinguish each item from visually similar garments retrieved by CLIP.
+- **Online retrieval:** Parse the user's query, apply hard constraints, combine the top 10 candidates from attribute matching with the top 10 from description similarity, and rerank the merged candidates using attribute, semantic, and style evidence.
+
+![Online retrieval pipeline: query parsing, hard filtering, candidate selection, and hybrid reranking](web/search-flow.svg)
+
+The default scoring weights are **55% description · 35% graph attributes · 10% style**. Weights are configurable and are renormalized over the available scoring components.
+
+> **Scope:** This repository contains the online retrieval service and interactive demo. The offline graph-construction pipeline is maintained separately.
+
+## 📂 Repository Structure
+
+```text
+web_app.py                  # FastAPI application and API
+preview.py                  # Catalog preview server
+web/                        # Frontend and style references
+src/fashion_how_graphdb/    # Query parsing, retrieval, and reranking
+public/images/              # Product images
+data/clip/                  # Standalone CLIP index
+scripts/                    # Index building and evaluation
+tests/                      # Automated tests
+docs/                       # Experiment details
+```
+
+## ✨ Demo
+
+Try a natural-language query such as:
+
+> A casual day dress with long sleeves, but not a black one.
+
+The demo lets you:
+
+- Inspect parsed constraints, item-level supporting evidence, and component scores.
+- Adjust scoring weights, thresholds, and style-target modes.
+- Compare FashioNavi results with the **unfiltered CLIP ViT-L/14 baseline** used in the paper.
+- Inspect generated Cypher queries and execution timings, then export complete search runs as JSON.
+
+The live demo covers **15,000 Fashion200K images** across five garment categories.
+
+## 🚀 Quick Start
+
+### 1. 🌐 Try It Online
+
+Open the **[Live Demo](https://fashion-retrieval-demo.vercel.app/)**. No installation is required.
+
+Example queries:
 
 - `A soft, elegant maxi dress with a V-neck and short sleeves`
 - `A navy jacket with waist pockets, without a zipper`
 - `A minimal black midi skirt with a slit, not pleated`
 
-### 2. Run locally (no API keys)
+### 2. 💻 Run Locally (No API Keys)
 
-You need Python 3.11–3.13. The repository includes about 280 MB of catalog images,
-so the clone takes a while.
+**Requirements:** Python 3.11–3.13. The repository includes approximately 280 MB of catalog images, so cloning may take some time.
 
 ```bash
 git clone https://github.com/NaVi-LAB-Modulabs/Fashion-Retrieval-Demo.git
@@ -36,29 +81,24 @@ pip install -r requirements.txt
 python web_app.py
 ```
 
-Open <http://127.0.0.1:7860>. Without credentials, the app switches to **CLIP ONNX**
-mode: plain CLIP ViT-B/32 text-to-image search over 5,000 bundled images, running
-on the CPU. The first search downloads a pinned 64 MB model from Hugging Face and
-takes a few seconds. Later searches are fast.
+Open <http://127.0.0.1:7860> in your browser.
 
-To look at the interface without installing anything, run `python preview.py`. It
-shows an unranked catalog preview, and search is disabled.
+Without OpenAI and Neo4j credentials, the application automatically switches to **CLIP ONNX mode**: CPU-based text-to-image retrieval using **CLIP ViT-B/32** over **5,000 bundled images**. On the first search, it downloads a pinned model file (approximately 64 MB) from Hugging Face, so an internet connection is required. Subsequent searches are faster.
 
-### 3. Run the full FashioNavi pipeline
+To preview the interface without installing the full application, run `python preview.py`. This launches an unranked catalog preview with search disabled.
 
-Full search needs an **OpenAI API key** and a **Neo4j database loaded with the
-FashioNavi fashion graph**.
+### 3. 🗃️ Run the Full FashioNavi Pipeline
 
-> **The Neo4j graph data will be released soon.** Download and restore instructions
-> will be added here at that time. Until then, you can try the full pipeline in the
-> [live demo](https://fashion-retrieval-demo.vercel.app/).
+Full hybrid retrieval requires an **OpenAI API key** and a **Neo4j database populated with the FashioNavi fashion graph**.
 
-Once the data is available:
+> **Graph data release pending.** Download and restore instructions will be added once the Neo4j graph data is available. Until then, you can explore the full pipeline through the [live demo](https://fashion-retrieval-demo.vercel.app/).
 
-1. Install Neo4j 5.23 or later, either [Neo4j Desktop](https://neo4j.com/download/)
-   or the [Docker image](https://hub.docker.com/_/neo4j).
-2. Load the released graph data into a database.
-3. Create `.env` and fill in the values below. Then start the app:
+Once the graph data is released:
+
+1. Install **Neo4j 5.23 or later** using [Neo4j Desktop](https://neo4j.com/download/) or the [official Docker image](https://hub.docker.com/_/neo4j).
+2. Restore the released graph data into your Neo4j database.
+3. Copy `.env.example` to `.env` and configure the variables below.
+4. Start the application:
 
 ```bash
 cp .env.example .env               # Windows: copy .env.example .env
@@ -67,61 +107,48 @@ python web_app.py
 
 | Variable | Required | Default or example |
 | --- | --- | --- |
-| `OPENAI_API_KEY` | yes | |
-| `NEO4J_URI` | yes | `bolt://localhost:7687` for a local install |
-| `NEO4J_PASSWORD` | yes | |
-| `NEO4J_USERNAME` | | `neo4j` |
-| `NEO4J_DATABASE` | | server default |
-| `OPENAI_MODEL` | | `gpt-5.4-mini` (pinned to `gpt-5.4-mini-2026-03-17`) |
-| `OPENAI_EMBEDDING_MODEL` | | `text-embedding-3-large` |
+| `OPENAI_API_KEY` | Yes | — |
+| `NEO4J_URI` | Yes | `bolt://localhost:7687` for a local installation |
+| `NEO4J_PASSWORD` | Yes | — |
+| `NEO4J_USERNAME` | No | `neo4j` |
+| `NEO4J_DATABASE` | No | Server default |
+| `OPENAI_MODEL` | No | `gpt-5.4-mini` (pinned to `gpt-5.4-mini-2026-03-17`) |
+| `OPENAI_EMBEDDING_MODEL` | No | `text-embedding-3-large` |
 
-Once these are set, the header shows **Live search configured** and searches use the
-**Hybrid** retrieval mode by default.
+When the credentials and graph are configured, the application header displays **Live search configured**, and **Hybrid** becomes the default retrieval mode.
 
-## Using the interface
+## 🎛️ Using the Interface
 
-- **Search bar.** Describe what you want in plain English. Negations ("not white",
-  "without a zipper") become exclusion filters.
-- **Search settings** (collapsible):
-  - **Retrieval**: *Hybrid* (full FashioNavi) or *CLIP ONNX* (plain CLIP).
-  - **Style targets**: *Image references* calibrates style targets against labeled
-    reference images. *Legacy* uses text-only targets.
-  - **Scoring weights**: description, graph-attribute and style weights. The
-    default is 55 : 35 : 10.
-  - **Min. attribute match** and **minimum score** thresholds.
-- **Results.** Each card shows its final score and component scores
-  (G = graph, T = text description, S = style). Click a card for its matched
-  attributes and style-axis values.
-- **How this search was ranked.** Shows the extracted constraints, the generated
-  Cypher and its parameters, and the time each stage took.
-- **Show CLIP results.** A separate CLIP ViT-L/14 baseline for comparison. It is
-  collapsed by default so it is not mistaken for FashioNavi results. Items that
-  appear in both lists are marked.
-- **Export.** Downloads the complete run as JSON.
+- **Search bar:** Describe an item in plain English. Negations such as “not white” and “without a zipper” are converted into exclusion filters.
+- **Search settings (collapsible):**
+  - **Retrieval mode:** Choose *Hybrid* (full FashioNavi) or *CLIP ONNX* (standalone CLIP search).
+  - **Style targets:** Choose *Image references* to calibrate style targets using labeled reference images, or *Legacy* for text-only targets.
+  - **Scoring weights:** Adjust description, graph-attribute, and style weights (default: **55 : 35 : 10**).
+  - **Thresholds:** Set the minimum attribute match and minimum final score.
+- **Results:** Each card displays its final score and component scores (**G** = graph attributes, **T** = text description, **S** = style). Open a card to inspect matched attributes and style-axis values.
+- **How this search was ranked:** Examine extracted constraints, generated Cypher and its parameters, and stage-by-stage timings.
+- **Show CLIP results:** Expand a separate **CLIP ViT-L/14** baseline. It is collapsed by default to distinguish baseline output from FashioNavi results; overlapping items are marked.
+- **Export:** Download the complete search run as JSON.
 
-## How it works
+## 🧠 How It Works
 
-1. **Parse.** An LLM extracts the category, required and excluded attributes, a
-   visual description, and any requested style axes.
-2. **Filter.** Hard filters on the category and on required and excluded attributes
-   run in Neo4j before any ranking.
-3. **Select candidates.** From the filtered items, the top 10 by graph-attribute
-   score and the top 10 by description-embedding similarity are merged (at most
-   20 candidates).
-4. **Rerank.** The final score is a weighted mean of description similarity,
-   graph-attribute match and style-axis closeness. Components that are missing
-   are left out.
+1. **Parse:** An LLM extracts the product category, required and excluded attributes, a visual description, and requested style-axis targets.
+2. **Filter:** Neo4j applies hard constraints on category and required/excluded attributes before ranking.
+3. **Select candidates:** Retrieve the top 10 filtered items by graph-attribute score and the top 10 by description-embedding similarity. Merge and deduplicate the two sets to obtain at most 20 candidates.
+4. **Rerank:** Compute a weighted mean of description similarity, graph-attribute match, and style-axis closeness. Missing components are excluded, and the remaining weights are renormalized.
 
-## API
+## 🔌 API
 
-The server exposes a JSON API. Interactive docs are at `/docs`.
+The FastAPI server exposes a JSON API, with interactive documentation at **`/docs`**.
 
-| Endpoint | Needs | Purpose |
+| Endpoint | Requirements | Purpose |
 | --- | --- | --- |
-| `POST /api/clip/search` | nothing | CLIP ViT-B/32 search over the bundled 5,000 images |
-| `POST /api/search` | OpenAI + Neo4j | Full FashioNavi search |
-| `POST /api/baseline` | Neo4j | CLIP ViT-L/14 baseline over graph image embeddings |
-| `GET /api/config` | | Server readiness and defaults |
+| `POST /api/clip/search` | No API keys or database | CLIP ViT-B/32 search over 5,000 bundled images |
+| `POST /api/search` | OpenAI + Neo4j | Full FashioNavi hybrid retrieval |
+| `POST /api/baseline` | Neo4j | CLIP ViT-L/14 baseline using graph image embeddings |
+| `GET /api/config` | None | Server readiness and default settings |
+
+Example request for local CLIP search:
 
 ```bash
 curl -X POST http://127.0.0.1:7860/api/clip/search \
@@ -129,16 +156,27 @@ curl -X POST http://127.0.0.1:7860/api/clip/search \
   -d '{"query": "a formal black dress", "limit": 5}'
 ```
 
-`/api/search` accepts the fields `query`, `limit` (1–50), `model`, `style_mode`
-(`legacy` or `reference`; the API defaults to `legacy`), `weights`
-(`{"text", "graph", "style"}`), `min_confidence` and `min_score`.
+The `/api/search` endpoint accepts the following fields:
 
-## Data and license
+- `query`: Natural-language search request.
+- `limit`: Number of returned results (1–50).
+- `model`: Model selection.
+- `style_mode`: `legacy` or `reference` (**API default: `legacy`**).
+- `weights`: Object containing `text`, `graph`, and `style` weights.
+- `min_confidence`: Minimum attribute-match threshold.
+- `min_score`: Minimum final-score threshold.
 
-The catalog images and IDs come from the
-[`Marqo/fashion200k`](https://huggingface.co/datasets/Marqo/fashion200k) distribution
-of [Fashion200K](https://github.com/xthan/fashion-200k): 15,000 images, 3,000 for each
-of five categories. That distribution is listed as Apache-2.0, but Marqo does not own
-the original dataset. If you redistribute or publicly deploy the images, check the
-original dataset terms and image rights first. The license for the software in this
-repository is separate from the license for this third-party data.
+## 🧪 Development
+
+Install the development dependencies and run the automated tests:
+
+```bash
+python -m pip install -r requirements-dev.txt
+python scripts/run_tests.py
+```
+
+See the [CLIP ONNX comparison](docs/clip-onnx-comparison.md) and [style-reference experiment](docs/reference-style-experiment.md) for implementation details and evaluation results. Vercel deployment settings are defined in `pyproject.toml` and `vercel.json`.
+
+## ⚖️ License
+
+This project is licensed under the **MIT License**.

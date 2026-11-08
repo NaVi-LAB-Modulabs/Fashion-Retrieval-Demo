@@ -1,13 +1,35 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-const escapeHTML = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"}[c]));
-const score = (value) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(3) : "N/A";
-const componentScore = (item, name) => item.score_components?.includes(name) ? score(item[`${name}_score`]) : "N/A";
-const percentage = (value) => typeof value === "number" && Number.isFinite(value) ? Math.min(100, Math.max(0, value * 100)) : 0;
+const escapeHTML = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;"
+}[c]));
+const score = (value) => typeof value === "number" && Number.isFinite(value)
+  ? value.toFixed(3) : "N/A";
+const componentScore = (item, name) => item.score_components?.includes(name)
+  ? score(item[`${name}_score`]) : "N/A";
+const percentage = (value) => typeof value === "number" && Number.isFinite(value)
+  ? Math.min(100, Math.max(0, value * 100)) : 0;
 const label = (value) => String(value || "").replaceAll("_", " ");
+
 // The CLIP baseline starts collapsed for every search so it is not mistaken for FashioNavi results.
-const state = { config: null, preview: [], run: null, view: "grid", busy: false, lastAttemptFailed: false, attempt: 0, runAttempt: null, baseline: null, baselineOpen: false, revealPending: false };
+const state = {
+  config: null,
+  preview: [],
+  run: null,
+  view: "grid",
+  busy: false,
+  lastAttemptFailed: false,
+  attempt: 0,
+  runAttempt: null,
+  baseline: null,
+  baselineOpen: false,
+  revealPending: false
+};
 state.references = null;
 const weightControls = { text: "weight-text", graph: "weight-graph", style: "weight-style" };
 let defaultWeightPoints = { text: 55, graph: 35, style: 10 };
@@ -194,7 +216,10 @@ function renderBaselineOverlap() {
 
 // Brings the main results into view once they arrive; waits while a dialog is open.
 function revealResults() {
-  if (document.querySelector("dialog[open]")) { state.revealPending = true; return; }
+  if (document.querySelector("dialog[open]")) {
+    state.revealPending = true;
+    return;
+  }
   state.revealPending = false;
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   $("results-head").scrollIntoView({behavior: reduceMotion ? "auto" : "smooth", block: "start"});
@@ -212,7 +237,12 @@ async function runBaseline(payload, attempt) {
   let result;
   try {
     // The first request after a server start may wait for the CLIP model to load.
-    const data = await api("/api/baseline", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({query: payload.query, limit: payload.limit}), signal: AbortSignal.timeout(180000)});
+    const data = await api("/api/baseline", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({query: payload.query, limit: payload.limit}),
+      signal: AbortSignal.timeout(180000)
+    });
     result = {status: "ok", attempt, data};
   } catch (error) {
     result = {status: "error", attempt, error: error.name === "TimeoutError" ? "The baseline took too long." : error.message || "Could not reach the baseline endpoint."};
@@ -418,7 +448,11 @@ $("search-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   if (state.busy) return;
   const query = $("query").value.trim();
-  if (!query) { notice("Describe the fashion items you are looking for.", "error"); $("query").focus(); return; }
+  if (!query) {
+    notice("Describe the fashion items you are looking for.", "error");
+    $("query").focus();
+    return;
+  }
   const weights = selectedWeights();
   const clip = $("retrieval-mode").value === "clip";
   if (!clip && Object.values(weights).every((value) => value === 0)) {
@@ -431,13 +465,23 @@ $("search-form").addEventListener("submit", async (event) => {
     return;
   }
   if (clip ? !state.config?.clip?.available : !state.config?.ready) {
-    if (clip) { notice("CLIP catalog index is unavailable on this server.", "error"); return; }
+    if (clip) {
+      notice("CLIP catalog index is unavailable on this server.", "error");
+      return;
+    }
     notice(state.config?.preview
       ? "You’re viewing the catalog preview. Start the live web server with configured OpenAI and Neo4j credentials to run a search."
       : "Live search is not ready. Check the server’s OpenAI and Neo4j configuration, then reload the page.", "error");
     return;
   }
-  const payload = {query, model: $("model").value.trim(), limit: Number($("limit").value), min_score: Number($("min-score").value), min_confidence: Number($("min-confidence").value), weights};
+  const payload = {
+    query,
+    model: $("model").value.trim(),
+    limit: Number($("limit").value),
+    min_score: Number($("min-score").value),
+    min_confidence: Number($("min-confidence").value),
+    weights
+  };
   payload.style_mode = $("style-mode").value;
   state.lastAttemptFailed = false;
   const attempt = ++state.attempt;
@@ -449,7 +493,12 @@ $("search-form").addEventListener("submit", async (event) => {
   notice(clip ? "Running CLIP ONNX retrieval..." : "Running query parsing, graph retrieval and reranking...", "loading");
   const timer = setInterval(() => notice(`Search in progress · ${Math.round((Date.now() - started) / 1000)}s elapsed. Waiting for the retrieval response.`, "loading"), 1000);
   try {
-    state.run = await api(clip ? "/api/clip/search" : "/api/search", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(clip ? {query, limit: payload.limit} : payload), signal: AbortSignal.timeout(240000)});
+    state.run = await api(clip ? "/api/clip/search" : "/api/search", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(clip ? {query, limit: payload.limit} : payload),
+      signal: AbortSignal.timeout(240000)
+    });
     state.runAttempt = attempt;
     succeeded = true;
     const calibrationWarning = state.run.extraction?.style_calibration?.warning;
@@ -492,7 +541,9 @@ async function openReferences(axisId) {
     if (axisId) $("reference-axis").value = axisId;
     showReferenceImage();
     $("reference-dialog").showModal();
-  } catch (error) { notice(error.message, "error"); }
+  } catch (error) {
+    notice(error.message, "error");
+  }
 }
 $("browse-references").addEventListener("click", () => openReferences());
 $("reference-axis").addEventListener("change", showReferenceImage);
@@ -554,7 +605,8 @@ async function copyRunText(buttonId, codeId, text) {
     const selection = window.getSelection();
     const range = document.createRange();
     range.selectNodeContents(code);
-    selection.removeAllRanges(); selection.addRange(range);
+    selection.removeAllRanges();
+    selection.addRange(range);
     code.scrollIntoView({block: "nearest"});
     button.textContent = "Selected: Ctrl+C";
   }
@@ -582,7 +634,9 @@ $("export-run").addEventListener("click", () => {
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = `fashion-search-run-${new Date().toISOString().replaceAll(":", "-")}.json`;
-  document.body.append(anchor); anchor.click(); anchor.remove();
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
 
