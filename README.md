@@ -166,17 +166,6 @@ The `/api/search` endpoint accepts the following fields:
 - `min_confidence`: Minimum attribute-match threshold.
 - `min_score`: Minimum final-score threshold.
 
-## 🧪 Development
-
-Install the development dependencies and run the automated tests:
-
-```bash
-python -m pip install -r requirements-dev.txt
-python scripts/run_tests.py
-```
-
-See the [CLIP ONNX comparison](docs/clip-onnx-comparison.md) and [style-reference experiment](docs/reference-style-experiment.md) for implementation details and evaluation results. Vercel deployment settings are defined in `pyproject.toml` and `vercel.json`.
-
 ## ⚖️ License
 
 This project is licensed under the **MIT License**.
