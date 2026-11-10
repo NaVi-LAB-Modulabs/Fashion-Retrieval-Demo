@@ -21,7 +21,7 @@ FashioNavi consists of two stages:
 - **Offline graph construction:** Extract typed product attributes, seven reference-grounded style scores, and VLM-generated descriptions designed to distinguish each item from visually similar garments retrieved by CLIP.
 - **Online retrieval:** Parse the user's query, apply hard constraints, combine the top 10 candidates from attribute matching with the top 10 from description similarity, and rerank the merged candidates using attribute, semantic, and style evidence.
 
-![Online retrieval pipeline: query parsing, hard filtering, candidate selection, and hybrid reranking](web/search-flow.svg)
+![FashioNavi offline graph construction and online hybrid retrieval pipeline](docs/figures/metadata-aware-fashion-graph-methodology.png)
 
 The default scoring weights are **55% description · 35% graph attributes · 10% style**. Weights are configurable and are renormalized over the available scoring components.
 
