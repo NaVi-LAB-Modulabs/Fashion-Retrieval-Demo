@@ -146,9 +146,11 @@ CATEGORY_SUBCATEGORIES = {
 # Based on fashion-how/codebook.wst.txt garment types (including KN: jersey).
 # Sleeveless tops are the only additional type; finer styles share a broad type.
 GARMENT_TYPE_VALUES = {
-    "jackets": ["coat", "cardigan", "vest", "jacket", "hoodie"],
+    "jackets": ["coat", "jacket", "parka", "puffer", "cardigan", "vest", "hoodie"],
     "tops": [
-        "jersey",
+        "t-shirt",
+        "sweatshirt",
+        "bustier",
         "sweater",
         "shirt",
         "blouse",
@@ -157,16 +159,20 @@ GARMENT_TYPE_VALUES = {
 }
 
 GARMENT_TYPE_DESCRIPTIONS = {
-    "coat": "Substantial outerwear with coverage typically extending below the hips; length alone does not establish a coat.",
-    "jacket": "Outerwear with jacket construction, including tailored blazers; excludes coats, cardigans, and vests.",
-    "shirt": "A shirt-style top with a collar or functional placket and shirt construction, including polo shirts.",
-    "blouse": "A blouse-style top with soft draping or decorative construction rather than a conventional shirt or T-shirt structure.",
-    "jersey": "A casual jersey-style pullover, including T-shirts, sports jerseys, and non-hooded sweatshirts. Excludes visibly sweater-knit pullovers and polo shirts.",
-    "sweater": "A knitted pullover without a full front opening.",
-    "cardigan": "A knitted garment with a full front opening, whether buttoned, zipped, or open-front.",
-    "hoodie": "A sweatshirt-style top with an attached hood; a hooded coat or jacket is not a hoodie.",
-    "sleeveless_top": "A sleeveless top, including tank tops and narrow-strap camisoles; excludes layering vests.",
-    "vest": "A sleeveless layering garment with vest construction, including waistcoats and sweater vests; not an ordinary tank top.",
+    "coat": "Outerwear with coat construction and coverage typically extending below the hips, including trench coats and pea coats. Excludes parkas and visibly lofted puffers; a long puffer remains puffer. Length alone does not establish a coat.",
+    "jacket": "Outerwear with jacket construction, including tailored blazers, bomber jackets, biker jackets, denim jackets, and non-puffer quilted jackets. Excludes coats, parkas, puffers, cardigans, vests, and sweatshirt-style hoodies.",
+    "parka": "A sleeved utilitarian outerwear garment, usually covering the hips or thighs, often with a hood, substantial pockets, and a drawstring or cinched waist or hem. A hood alone does not establish a parka. Select puffer instead when the target has a visibly lofted padded body.",
+    "puffer": "A sleeved outerwear garment with a visibly lofted padded body, often arranged in voluminous filled baffles; includes short puffer jackets and long puffer coats. Flat quilting, padded shoulders, or a padded collar alone do not establish a puffer. Sleeveless padded layering garments are vest. Do not infer whether the filling is down or synthetic.",
+    "cardigan": "A knitted garment with sleeves and a full front opening, whether buttoned, zipped, or open-front. Visible knit construction is required; an open front alone does not establish a cardigan. Sleeveless knitted layering garments are vest.",
+    "vest": "A sleeveless layering garment with vest construction, including waistcoats, sweater vests, padded vests, and fur vests; not an ordinary tank top. Select vest for sleeveless padded outerwear rather than puffer. Ignore sleeves belonging to an inner garment.",
+    "hoodie": "A sweatshirt-style top with an attached hood, including zip-front hoodies. A hooded coat, parka, puffer, or jacket is not a hoodie; do not classify an inner hoodie layered beneath the target outerwear.",
+    "t-shirt": "A casual lightweight jersey-knit top with T-shirt construction, typically featuring a crew neck, V-neck, or similar simple neckline. Includes short-sleeved and long-sleeved T-shirts, graphic tees, and sports jerseys with T-shirt construction. Excludes heavier sweatshirt-style pullovers, visibly sweater-knit garments, collared shirts, and sleeveless tops.",
+    "sweatshirt": "A casual pullover with sweatshirt construction, typically made from medium- to heavyweight knit fabric such as fleece or French terry, often with ribbed cuffs, collar, or hem. Includes crewneck sweatshirts and non-hooded athletic sweatshirts. Excludes hoodies, lightweight T-shirts, and visibly sweater-knit pullovers. Ribbed trim alone does not establish a sweatshirt.",
+    "bustier": "A fitted top with structured bust or torso construction, often featuring shaped cups, corset-like seams, boning, or a defined bodice. Includes sleeveless and strapless bustier tops. Excludes ordinary tank tops, camisoles, and fitted sleeveless tops without visible bustier construction. Tight fit or cropped length alone does not establish a bustier.",
+    "sweater": "A visibly knitted pullover without a full front opening, including fine-knit, ribbed-knit, cable-knit, and chunky-knit sweaters. Includes short-sleeved and sleeveless sweater-style pullovers when the garment has sweater construction. Excludes cardigans, sweatshirt-style pullovers, and lightweight T-shirts. Ribbed fabric alone does not establish a sweater.",
+    "shirt": "A shirt-style top with conventional shirt construction, typically featuring a structured collar, button placket, or both. Includes dress shirts, Oxford shirts, casual button-down shirts, and polo shirts. Excludes soft draped blouses, T-shirts, and sweatshirt-style pullovers. A collar alone does not establish a shirt.",
+    "blouse": "A top with blouse-style construction, typically featuring soft draping, lightweight woven fabric, gathers, ruffles, pleats, or decorative neckline and sleeve details. Includes both collared and collarless blouses. Excludes conventional button-down shirts, basic T-shirts, and structured bustier tops. Fabric softness or decorative details alone do not establish a blouse.",
+    "sleeveless_top": "A top without sleeves, including tank tops, camisoles, halter tops, and simple strapless or tube tops. Excludes structured bustiers, sleeveless layering vests, and visibly sweater-knit pullovers. Select bustier when the garment has structured bust or corset-like construction. Sleeveless design alone does not override a more specific garment type.",
 }
 
 COMMON_ATTRIBUTE_VALUES = {
